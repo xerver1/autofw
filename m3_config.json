@@ -1,0 +1,21 @@
+{
+  "pipeline": [
+    {
+      "app": "com.wn.app.np",
+      "tasks": ["open_menu"],
+      "enabled": true
+    }
+  ],
+  "recovery": {
+    "max_retry": 5,
+    "watchdog_timeout": 60,
+    "watchdog_timeout_long": 180,
+    "click_circuit_breaker": 12,
+    "foreground_pull_back": 3
+  },
+  "checkpoint": {
+    "enabled": true,
+    "resume_on_start": true,
+    "resume_auto": "ask"
+  }
+}

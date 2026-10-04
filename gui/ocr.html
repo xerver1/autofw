@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR 识别与调试 · autofw</title>
+<style>
+  /* Glassmorphism（通透版 v3.1）：更低透明度 + 更小模糊 + 弱化发光，玻璃借光不遮景 */
+  :root {
+    --bg-deep:#F3F1EB; --glass-card:#FCFBF8; --glass-strong:#FFFFFF;
+    --glass-input:#FFFFFF; --glass-btn:rgba(44,47,42,0.06); --glass-hover:rgba(44,47,42,0.10);
+    --border-glass:rgba(44,47,42,0.09); --border-bright:rgba(44,47,42,0.20);
+    --gold:#75846C; --gold-text:#5E6B55; --moon:#6B7267;
+    --text:#2C2F2A; --text-80:rgba(44,47,42,0.80); --text-50:rgba(44,47,42,0.55); --text-35:rgba(44,47,42,0.35);
+    --ok:#5E8B6E; --err:#BC5F51;
+    --spring:cubic-bezier(0.16,1,0.3,1);
+    --shadow-card:0 2px 4px rgba(44,47,42,0.05), 0 12px 28px rgba(44,47,42,0.06);
+    --shadow-btn:0 4px 12px rgba(3,7,18,0.30), inset 0 1px 0 rgba(255,255,255,0.12);
+    --shadow-input:inset 0 1px 0 rgba(44,47,42,0.04);
+    --shadow-focus:0 0 0 3px rgba(117,132,108,0.18), 0 8px 24px rgba(44,47,42,0.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text); font-size: 14.5px; line-height: 1.65;
+    background:
+      radial-gradient(720px circle at 85% 8%, rgba(124,156,196,0.38), transparent 62%),
+      radial-gradient(640px circle at 8% 92%, rgba(51,81,122,0.45), transparent 62%),
+      radial-gradient(520px circle at 50% 42%, rgba(228,184,99,0.12), transparent 58%),
+      var(--bg-deep);
+    background-attachment: fixed;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  .nav {
+    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;
+    background:var(--glass-strong); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--border-glass); border-radius:20px; box-shadow:var(--shadow-card);
+    padding:16px 24px; margin-bottom:24px;
+  }
+  .nav h1 { font-size:19px; font-weight:600; }
+  .nav .sub { color:var(--text-50); font-size:12px; margin-top:2px; }
+  .nav a { color:var(--text-50); text-decoration:none; font-size:13px; padding:8px 14px; border-radius:12px; background:var(--glass-input); border:1px solid var(--border-glass); transition:all 500ms var(--spring); }
+  .nav a:hover { background:var(--glass-hover); border-color:var(--border-bright); color:var(--gold-text); }
+
+  h2 { font-size:15px; font-weight:600; margin:30px 0 12px; }
+  .card {
+    background:var(--glass-card); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--border-glass); border-radius:20px; box-shadow:var(--shadow-card);
+    padding:20px 22px; margin-bottom:16px;
+  }
+  #drop { border:1.5px dashed var(--border-bright); border-radius:16px; padding:30px; text-align:center; color:var(--text-50); cursor:pointer; transition:all 500ms var(--spring); }
+  #drop:hover { background:var(--glass-hover); border-color:rgba(228,184,99,0.5); }
+  #drop input { display:none; }
+  #hint { margin-top:8px; font-size:12.5px; color:var(--text-50); }
+
+  .previewWrap { position:relative; display:none; margin-top:14px; }
+  canvas { display:block; max-width:100%; border:1px solid var(--border-glass); border-radius:14px; background:rgba(3,7,18,0.35); }
+
+  .toolbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:12px; }
+  button {
+    border:1px solid var(--border-glass); border-radius:14px; background:var(--glass-btn);
+    backdrop-filter:blur(24px) saturate(180%); -webkit-backdrop-filter:blur(24px) saturate(180%);
+    color:var(--text); font-size:13.5px; font-family:inherit; cursor:pointer; padding:9px 22px;
+    box-shadow:var(--shadow-btn); transition:all 500ms var(--spring);
+  }
+  button:hover:not(:disabled) { background:var(--glass-hover); border-color:var(--border-bright); transform:translateY(-2px); }
+  button:active:not(:disabled) { transform:scale(0.97); }
+  button:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .switch { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-80); cursor:pointer; }
+  .switch input { accent-color: var(--gold); }
+
+  .stats { display:flex; gap:24px; flex-wrap:wrap; font-size:13px; color:var(--text-80); }
+  .stats b { color: var(--gold-text); font-variant-numeric:tabular-nums; }
+
+  .result-item {
+    display:flex; align-items:center; gap:12px; padding:8px 4px; border-bottom:1px dashed rgba(255,255,255,0.12); font-size:13.5px;
+  }
+  .result-item .t { flex:1; }
+  .result-item .c { color:var(--moon); font-family:Consolas,monospace; font-size:12.5px; min-width:70px; text-align:right; }
+
+  .err { color:var(--err); font-size:13px; margin-top:10px; display:none; }
+  .okline { color:var(--ok); font-size:13px; margin-top:10px; display:none; }
+  footer { margin-top:40px; border-top:1px solid rgba(255,255,255,0.12); padding-top:14px; font-size:12px; color:var(--text-50); display:flex; justify-content:space-between; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+  @media (max-width: 640px) { .wrap { padding: 20px 14px 60px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="nav">
+  <div>
+    <h1>OCR 识别与调试</h1>
+    <div class="sub">上传截图 → 识别文字 → 调试可视化（识别框 / 置信度 / 耗时）</div>
+  </div>
+  <a href="/">← 控制面板</a>
+</div>
+
+<h2>1 · 上传图片</h2>
+<div class="card">
+  <div id="drop">点击或拖拽选择截图（PNG / JPEG，上限 10MB）<input type="file" id="fileInput" accept="image/png,image/jpeg"></div>
+  <div id="hint">上传后自动识别；可多次上传不同图片</div>
+</div>
+
+<h2>2 · 识别结果</h2>
+<div class="card">
+  <div class="previewWrap"><canvas id="canvas"></canvas></div>
+  <div class="toolbar">
+    <button id="btnRun" disabled>重新识别</button>
+    <label class="switch"><input type="checkbox" id="dbgBox" checked> 调试可视化（识别框 + 置信度）</label>
+    <span class="stats"><span>耗时 <b id="elapsed">—</b> ms</span><span>文本 <b id="count">0</b> 段</span><span>引擎 <span id="engine">rapidocr</span></span></span>
+  </div>
+  <div class="err" id="err"></div>
+  <div class="okline" id="okline"></div>
+  <div id="results" style="margin-top:12px"></div>
+</div>
+
+<footer><span>autofw · OCR 调试</span><span>识别请求与可视化操作自动记录审计台账（state/ocr_audit.log）</span></footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let imgEl = null, imgW = 0, imgH = 0, lastResult = null, imageB64 = "";
+
+$("drop").addEventListener("click", () => $("fileInput").click());
+$("drop").addEventListener("dragover", (e) => e.preventDefault());
+$("drop").addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]); });
+$("fileInput").addEventListener("change", (e) => { if (e.target.files.length) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  hideErr();
+  if (!/^image\/(png|jpeg)$/.test(file.type)) { showErr("不支持的文件格式：" + (file.type || "未知") + "，仅支持 PNG/JPEG"); return; }
+  if (file.size > 10 * 1024 * 1024) { showErr("文件过大（" + (file.size/1024/1024).toFixed(1) + "MB），上限 10MB"); return; }
+  $("hint").textContent = "正在读取：" + file.name + "（" + (file.size/1024).toFixed(1) + " KB）...";
+  const reader = new FileReader();
+  reader.onload = () => {
+    imgEl = new Image();
+    imgEl.onload = () => {
+      imgW = imgEl.naturalWidth; imgH = imgEl.naturalHeight;
+      const canvas = $("canvas");
+      canvas.width = imgW; canvas.height = imgH;
+      canvas.style.width = "100%";
+      canvas.getContext("2d").drawImage(imgEl, 0, 0);
+      $(".previewWrap")[0] = null; // noop guard
+      document.querySelector(".previewWrap").style.display = "block";
+      const tmp = document.createElement("canvas");
+      tmp.width = imgW; tmp.height = imgH;
+      tmp.getContext("2d").drawImage(imgEl, 0, 0);
+      imageB64 = tmp.toDataURL("image/png").split(",")[1];
+      $("hint").textContent = "已加载：" + file.name + "（" + imgW + "×" + imgH + "）—— 正在识别...";
+      $("btnRun").disabled = false;
+      recognize();
+    };
+    imgEl.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function recognize() {
+  hideErr();
+  if (!imageB64) return;
+  $("hint").textContent = "识别中...";
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/api/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64: imageB64 })
+    });
+    const j = await r.json();
+    const elapsed = Math.round(performance.now() - t0);
+    if (!j.ok) { showErr(j.error || "识别失败"); return; }
+    lastResult = j;
+    $("elapsed").textContent = j.elapsed_ms;
+    $("count").textContent = j.count;
+    $("engine").textContent = j.engine || "rapidocr";
+    $("hint").textContent = "识别完成（" + j.count + " 段文本）—— 下方为结果与调试可视化";
+    renderResult(j);
+    $("okline").style.display = "block";
+    $("okline").textContent = "识别成功：" + j.count + " 段文本，耗时 " + j.elapsed_ms + "ms（前端往返 " + elapsed + "ms）";
+  } catch (e) {
+    showErr("OCR 服务请求失败：" + e.message + " —— 请确认面板服务已启动且 rapidocr 已安装");
+  }
+}
+
+function renderResult(j) {
+  // 画布重绘底图 + 识别框
+  const canvas = $("canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, imgW, imgH);
+  ctx.drawImage(imgEl, 0, 0);
+  const dbg = $("dbgBox").checked;
+  const list = $("results");
+  list.innerHTML = "";
+  if (!j.texts || !j.texts.length) {
+    list.innerHTML = '<div style="color:var(--text-35);padding:8px 0">未识别到文字</div>';
+    return;
+  }
+  j.texts.forEach((t, i) => {
+    if (dbg) {
+      // 四边形识别框（RapidOCR box: 4 点）
+      ctx.strokeStyle = "rgba(228,184,99,0.9)";
+      ctx.lineWidth = Math.max(2, imgW / 900);
+      ctx.beginPath();
+      t.box.forEach((p, k) => { k === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); });
+      ctx.closePath();
+      ctx.stroke();
+      // 置信度标签（框左上角）
+      const x0 = Math.min(...t.box.map((p) => p[0]));
+      const y0 = Math.min(...t.box.map((p) => p[1]));
+      const conf = (t.confidence * 100).toFixed(0) + "%";
+      ctx.font = "13px Consolas, monospace";
+      const tw = ctx.measureText(conf).width;
+      ctx.fillStyle = "rgba(228,184,99,0.9)";
+      ctx.fillRect(x0, y0 - 18, tw + 8, 16);
+      ctx.fillStyle = "#0B1322";
+      ctx.fillText(conf, x0 + 4, y0 - 5);
+    }
+    // 文本列表
+    const d = document.createElement("div");
+    d.className = "result-item";
+    d.innerHTML = '<span class="t">' + esc(t.text) + '</span>' +
+      '<span class="c">' + (t.confidence * 100).toFixed(1) + '%</span>';
+    list.appendChild(d);
+  });
+}
+
+$("dbgBox").addEventListener("change", () => { if (lastResult) renderResult(lastResult); });
+$("btnRun").addEventListener("click", recognize);
+
+function showErr(m) { $("err").textContent = m; $("err").style.display = "block"; }
+function hideErr() { $("err").style.display = "none"; $("okline").style.display = "none"; }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+</script>
+</body>
+</html>

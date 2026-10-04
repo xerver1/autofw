@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>autofw 自动化控制台</title>
+<style>
+  /* ============================================================
+     autofw 主控制台 v3.1 · 17 Takram 柔和科技感
+     米白底 / 柔灰文字 / 灰绿点缀 · 圆角 12-16px · 柔和低对比阴影
+     微动效 150-300ms ease-out · 无 emoji 主视觉（CSS 图标/色点）
+     ============================================================ */
+  :root {
+    --bg: #F3F1EB;
+    --card: #FCFBF8;
+    --row: #FFFFFF;
+    --ink: #2C2F2A;
+    --ink-2: #686C64;
+    --ink-3: #9BA096;
+    --line: rgba(44, 47, 42, 0.09);
+    --line-2: rgba(44, 47, 42, 0.16);
+    --accent: #75846C;
+    --accent-soft: rgba(117, 132, 108, 0.12);
+    --ok: #5E8B6E;
+    --ok-soft: rgba(94, 139, 110, 0.14);
+    --warn: #B08A45;
+    --warn-soft: rgba(176, 138, 69, 0.14);
+    --err: #BC5F51;
+    --err-soft: rgba(188, 95, 81, 0.10);
+    --shadow-card: 0 1px 2px rgba(44, 47, 42, 0.05), 0 12px 28px rgba(44, 47, 42, 0.06);
+    --shadow-hover: 0 2px 4px rgba(44, 47, 42, 0.06), 0 18px 40px rgba(44, 47, 42, 0.10);
+    --shadow-pop: 0 8px 20px rgba(44, 47, 42, 0.10), 0 28px 60px rgba(44, 47, 42, 0.14);
+    --r-lg: 16px;
+    --r: 14px;
+    --r-sm: 10px;
+    --dur: 200ms;
+    --ease: cubic-bezier(0.25, 0.6, 0.35, 1);
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    font-size: 14.5px; line-height: 1.65;
+    background:
+      radial-gradient(700px circle at 88% -5%, rgba(190, 183, 160, 0.32), transparent 62%),
+      radial-gradient(560px circle at 6% 102%, rgba(150, 160, 140, 0.26), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  /* ---------- 顶部导航 ---------- */
+  .nav {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 18px;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-card);
+    padding: 15px 22px; margin-bottom: 20px;
+  }
+  .nav h1 { font-size: 18px; font-weight: 650; letter-spacing: 0.01em; }
+  .nav .sub { color: var(--ink-3); font-size: 12px; margin-top: 1px; }
+  .nav .nav-mid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav a {
+    color: var(--ink-2); text-decoration: none; font-size: 13px;
+    padding: 8px 14px; border-radius: var(--r-sm);
+    background: rgba(44, 47, 42, 0.04); border: 1px solid var(--line);
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .nav a:hover { background: rgba(44, 47, 42, 0.08); color: var(--ink); border-color: var(--line-2); }
+  .nav a:focus-visible, button:focus-visible, .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(117, 132, 108, 0.35); }
+  .nav .nav-ops { display: flex; gap: 8px; align-items: center; }
+
+  /* ---------- 按钮 ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 9px 18px; border-radius: var(--r-sm);
+    border: 1px solid transparent; background: rgba(44, 47, 42, 0.05);
+    color: var(--ink); font-size: 13.5px; font-family: inherit; cursor: pointer; text-decoration: none;
+    transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+                color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .btn:hover:not(:disabled) { background: rgba(44, 47, 42, 0.09); }
+  .btn:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  /* P0：.btn{display:inline-flex} 会盖掉浏览器 [hidden]，空态 CTA 必须强制隐藏 */
+  .btn[hidden], .runall-badge[hidden] { display: none !important; }
+  .btn.primary { background: var(--accent); color: #FCFBF8; }
+  .btn.primary:hover:not(:disabled) { background: #66755E; }
+  .btn.danger { background: transparent; border-color: rgba(188, 95, 81, 0.35); color: var(--err); }
+  .btn.danger:hover:not(:disabled) { background: var(--err-soft); border-color: rgba(188, 95, 81, 0.5); }
+  .btn.ghost { background: transparent; border-color: var(--line-2); color: var(--ink-2); }
+  .btn.ghost:hover:not(:disabled) { background: rgba(44, 47, 42, 0.05); color: var(--ink); }
+  .btn.sm { padding: 6px 13px; font-size: 12.5px; border-radius: 9px; }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: var(--r-sm);
+    border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); cursor: pointer;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .icon-btn:hover { background: rgba(44, 47, 42, 0.06); color: var(--ink); }
+
+  /* ---------- 状态行 ---------- */
+  .statusline {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-card); padding: 13px 20px; margin-bottom: 20px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); flex: none;
+         transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+  .dot.run { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); animation: pulse 2.2s ease-out infinite; }
+  .dot.stop { background: var(--ink-3); }
+  @keyframes pulse { 50% { opacity: 0.55; } }
+  #stateText { font-weight: 600; font-size: 14.5px; }
+  #stateDetail { color: var(--ink-3); font-size: 12.5px; }
+
+  /* ---------- 卡片 ---------- */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--shadow-card); padding: 18px 22px; margin-bottom: 20px;
+    transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+  .grid .card { margin-bottom: 0; }
+  .card:hover { transform: translateY(-1px); box-shadow: var(--shadow-hover); border-color: var(--line-2); }
+  .card h3 { font-size: 11.5px; color: var(--ink-2); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .card-head .ops { display: flex; align-items: center; gap: 8px; }
+  .kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0;
+        border-bottom: 1px dashed var(--line); font-size: 13.5px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { color: var(--ink-2); }
+  .kv .v { font-family: var(--mono); color: var(--ink); display: inline-flex; align-items: center; gap: 7px; }
+  .kv .v.acc { color: var(--accent); font-weight: 600; }
+  .empty { color: var(--ink-3); font-size: 13px; padding: 4px 2px; }
+  .empty a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--line-2); }
+  .empty a:hover { border-bottom-color: var(--accent); }
+
+  /* ---------- 待手动处理 ---------- */
+  .fail-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+              padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .fail-row:last-child { border-bottom: none; }
+  .fail-row .fmain { flex: 1; min-width: 220px; }
+  .fail-row .ft { color: var(--ink-2); font-size: 12px; font-family: var(--mono); }
+  .fail-row .fr { color: var(--err); font-size: 12.5px; margin-top: 2px; }
+  .fail-row .fops { display: flex; gap: 6px; }
+  .ftag { display: inline-block; font-size: 11px; padding: 1.5px 9px; border-radius: 999px; margin-right: 8px; font-weight: 600; }
+  .ftag.p { background: var(--warn-soft); color: var(--warn); }
+  .ftag.h { background: var(--ok-soft); color: var(--ok); }
+  .ftag.i { background: rgba(44, 47, 42, 0.06); color: var(--ink-3); }
+  .ftag.r { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- 已配置自动化 App 面板 ---------- */
+  .apps-box { display: flex; flex-direction: column; gap: 10px; }
+  .app-row { border: 1px solid var(--line); border-radius: var(--r); background: var(--row); overflow: hidden;
+             transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+  .app-row.open { border-color: var(--line-2); box-shadow: var(--shadow-card); }
+  .app-head { display: flex; align-items: center; gap: 12px; padding: 11px 14px; flex-wrap: wrap; }
+  .caret-btn {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 28px; height: 28px; border-radius: 9px;
+    border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); cursor: pointer;
+    transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .caret-btn:hover { background: rgba(44, 47, 42, 0.06); color: var(--ink); }
+  .caret-btn svg { transition: transform var(--dur) var(--ease); }
+  .app-row.open .caret-btn:not(.plus-btn) svg { transform: rotate(180deg); }
+  .plus-btn { color: var(--ink-2); }
+  .plus-btn:hover { color: var(--accent); border-color: var(--accent); }
+  /* “＋”按钮随子任务列表一样，仅展开后可见 */
+  .app-row:not(.open) .plus-btn { display: none; }
+  .app-id { flex: 1; min-width: 120px; }
+  .app-name { font-weight: 600; font-size: 14px; }
+  .app-pkg { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .task-count { font-size: 11.5px; color: var(--ink-2); background: rgba(44, 47, 42, 0.05);
+                padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+  .flow-link { flex: none; }
+  .tasks-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s var(--ease); }
+  .app-row.open .tasks-wrap { grid-template-rows: 1fr; }
+  .tasks-inner { overflow: hidden; min-height: 0; }
+  .task-list { border-top: 1px dashed var(--line); padding: 8px 10px 10px;
+               display: flex; flex-direction: column; gap: 3px; }
+  .task-row { display: flex; align-items: center; gap: 10px; padding: 6px 9px; border-radius: 9px;
+              transition: background 0.15s var(--ease), opacity 0.15s var(--ease); }
+  .task-row:hover { background: rgba(44, 47, 42, 0.04); }
+  .task-row.drag-over { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .task-row.dragging { opacity: 0.4; }
+  .grip { color: var(--ink-3); cursor: grab; display: inline-flex; padding: 2px; border-radius: 6px; opacity: 0.65;
+          transition: opacity 0.15s var(--ease); }
+  .task-row:hover .grip { opacity: 1; }
+  .grip:active { cursor: grabbing; }
+  .chk { position: relative; display: inline-flex; cursor: pointer; flex: none; }
+  .chk input { position: absolute; opacity: 0; pointer-events: none; }
+  .chk .box { width: 17px; height: 17px; border: 1.5px solid var(--line-2); border-radius: 5px;
+              transition: background 0.15s var(--ease), border-color 0.15s var(--ease); }
+  .chk .box::after { content: ""; position: absolute; left: 5px; top: 3px; width: 4px; height: 8px;
+                     border: solid #FCFBF8; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0);
+                     transition: transform 0.15s var(--ease); }
+  .chk input:checked + .box { background: var(--accent); border-color: var(--accent); }
+  .chk input:checked + .box::after { transform: rotate(45deg) scale(1); }
+  .app-chk { flex: none; margin-right: -2px; }
+  .app-run-btn { flex: none; white-space: nowrap; }
+  .task-name { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rename-op { flex: none; width: 24px; height: 24px; border-radius: 6px; color: var(--ink-2); }
+  .rename-op:hover { color: var(--accent); background: var(--accent-soft); }
+  .task-ops { display: flex; gap: 2px; flex: none; }
+  .op {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px;
+    border: none; background: transparent; color: var(--ink-3); cursor: pointer; text-decoration: none;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .op:hover { background: rgba(44, 47, 42, 0.06); color: var(--ink); }
+  .op.danger:hover { background: var(--err-soft); color: var(--err); }
+  .task-hint { color: var(--ink-3); font-size: 12.5px; padding: 6px 9px; }
+  .task-hint.err { color: var(--err); }
+  .add-row { padding: 6px 9px 2px; display: flex; gap: 8px; align-items: center; }
+  .add-input, .rename-input {
+    flex: 1; min-width: 0; border: 1.5px solid var(--line-2); border-radius: 9px;
+    padding: 6px 10px; font: inherit; font-size: 13px; background: #FFF; color: var(--ink); outline: none;
+    transition: border-color 0.15s var(--ease);
+  }
+  .add-input:focus, .rename-input:focus { border-color: var(--accent); }
+
+  /* ---------- MuMu 模拟器状态 ---------- */
+  .mumu-grid { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .mumu-main { display: flex; align-items: center; gap: 14px; min-width: 240px; }
+  .mumu-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ink-3); flex: none;
+              transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+  .mumu-dot.ok { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+  .mumu-dot.warn { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+  .mumu-dot.err { background: var(--err); box-shadow: 0 0 0 4px var(--err-soft); }
+  .mumu-state { font-size: 15.5px; font-weight: 600; }
+  .mumu-detail { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+  .mumu-sub { display: flex; flex-direction: column; gap: 4px; }
+  .mumu-sub .kv { border-bottom: none; padding: 2px 0; gap: 10px; }
+  .mumu-sub .k { font-size: 12.5px; min-width: 52px; }
+  .sd { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none;
+        transition: background var(--dur) var(--ease); }
+  .sd.ok { background: var(--ok); }
+  .sd.off { background: var(--ink-3); }
+  .sd.na { background: rgba(44, 47, 42, 0.15); }
+  .mumu-ops { display: flex; gap: 8px; margin-left: auto; }
+
+  /* ---------- 日志 ---------- */
+  .logbox { background: #EFEDE6; border: 1px solid var(--line); border-radius: 12px;
+            padding: 12px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7;
+            height: 240px; overflow-y: auto; color: var(--ink-2); white-space: pre-wrap; }
+  /* 打印输出面板：浅色高亮底，区别于运行日志（中性底） */
+  .printbox { background: #FBF7EC; border: 1px solid #E6D9B8; color: #5a4a1f; height: 180px; }
+  .printbox .ll-cur { background: rgba(217,138,43,0.16); }
+  .printbox .ll-cur::before { content: "▸ "; color: #D98A2B; }
+  .hint-inline { font-size: 10px; color: var(--ink-3); font-weight: 500; letter-spacing: 0.04em;
+                 text-transform: none; margin-left: 4px; }
+  .ll { padding: 0 2px; border-radius: 4px; }
+  .ll-cur { background: rgba(43,127,255,0.12); font-weight: 600; }   /* 最后一行 = 当前步骤 */
+  .ll-cur::before { content: "▸ "; color: #2B7FFF; }
+  .ll-t { color: var(--ink-3); margin-right: 8px; }
+  .ll-lv { display: inline-block; min-width: 62px; margin-right: 8px; font-weight: 600; }
+  .lv-info { color: #4E9E67; } .lv-warning { color: #D98A2B; }
+  .lv-error { color: #BC5F51; } .lv-critical { color: #BC5F51; }
+  .log-pause-hint { margin-left: auto; color: #D98A2B; font-size: 12px; }
+  .tabbar { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab { padding: 6px 14px; border-radius: 999px; font-size: 12.5px; color: var(--ink-3);
+         cursor: pointer; border: 1px solid transparent; transition: all var(--dur) var(--ease); }
+  .tab.on { background: rgba(44, 47, 42, 0.06); color: var(--ink); border-color: var(--line-2); }
+  .tab:hover { color: var(--ink); }
+  /* P1/P2：状态行 run-all 徽章 + 日志过滤 + 任务批量条 */
+  .runall-badge {
+    font-size: 11.5px; color: var(--warn); background: var(--warn-soft);
+    padding: 2px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap;
+  }
+  .statusline #btnRefreshStatus { margin-left: auto; flex: none; }
+  .log-filter { display: flex; align-items: center; gap: 8px; margin-left: 14px; flex-wrap: wrap; }
+  .log-filter input[type="search"] {
+    width: 160px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line-2);
+    font: inherit; font-size: 12px; background: var(--row); color: var(--ink); outline: none;
+  }
+  .log-filter input[type="search"]:focus { border-color: var(--accent); }
+  .log-filter label { font-size: 12px; color: var(--ink-2); cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 5px; }
+  .task-toolbar {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 2px 9px 8px; border-bottom: 1px dashed var(--line); margin-bottom: 4px;
+  }
+  .task-toolbar .hint { font-size: 11.5px; color: var(--ink-3); margin-left: auto; }
+  .task-toolbar button {
+    border: 1px solid var(--line-2); background: transparent; color: var(--ink-2);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .task-toolbar button:hover { background: rgba(44, 47, 42, 0.05); color: var(--ink); }
+  .app-layer-hint { font-size: 11.5px; color: var(--ink-3); padding: 0 4px 6px; }
+  .app-run-btn.running { background: var(--warn); border-color: var(--warn); }
+
+  footer { margin-top: 28px; color: var(--ink-3); font-size: 12px; text-align: center; }
+
+  /* ---------- 设置弹窗 ---------- */
+  .modal { position: fixed; inset: 0; background: rgba(44, 47, 42, 0.35); backdrop-filter: blur(3px);
+           -webkit-backdrop-filter: blur(3px);
+           display: flex; align-items: flex-start; justify-content: center; padding: 80px 20px 20px;
+           opacity: 0; pointer-events: none; transition: opacity 0.18s var(--ease); z-index: 50; }
+  .modal.open { opacity: 1; pointer-events: auto; }
+  .modal-box { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+               box-shadow: var(--shadow-pop); width: 340px; max-width: 100%; padding: 20px 22px;
+               transform: translateY(8px) scale(0.98); transition: transform 0.18s var(--ease); }
+  .modal.open .modal-box { transform: none; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .modal-head h3 { font-size: 14.5px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+  .setting-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; cursor: pointer; padding: 8px 0; }
+  .setting-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; line-height: 1.6; }
+
+  /* ---------- Toast ---------- */
+  .toast-wrap { position: fixed; top: 16px; right: 16px; z-index: 60;
+                display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
+  .t { background: #2C2F2A; color: #F3F1EB; font-size: 13px; padding: 10px 16px; border-radius: 12px;
+       box-shadow: var(--shadow-pop); animation: toast-in 0.22s var(--ease); }
+  .t.err { background: var(--err); }
+  .t.ok { background: var(--ok); }
+  .t.warn { background: var(--warn); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- 入场动画（stagger） ---------- */
+  .anim-block { animation: rise-in 0.3s var(--ease) both; }
+  .d0 { animation-delay: 0ms; }   .d1 { animation-delay: 55ms; }
+  .d2 { animation-delay: 110ms; } .d3 { animation-delay: 165ms; }
+  .d4 { animation-delay: 220ms; } .d5 { animation-delay: 275ms; }
+  .d6 { animation-delay: 330ms; }
+  @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- 动画开关（localStorage: autofw_anim_enabled） ---------- */
+  .no-anim *, .no-anim *::before, .no-anim *::after { transition: none !important; animation: none !important; }
+  .no-anim .anim-block { opacity: 1 !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<script>
+/* 尽早应用动画偏好，避免入场动画闪烁 */
+try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.documentElement.classList.add("no-anim"); } catch (e) {}
+</script>
+<div class="wrap">
+
+<div class="nav anim-block d0">
+  <div>
+    <h1>autofw 自动化控制台</h1>
+    <div class="sub">通用多 App 流水线 · 状态监控与启停控制</div>
+  </div>
+  <div class="nav-mid">
+    <a href="/pipeline_editor.html" target="_blank" rel="noopener">流水线编排</a>
+  </div>
+  <div class="nav-ops">
+    <button id="btnStart" class="btn primary" type="button" title="按流水线编排顺序执行步骤；与 App 行「运行自动化」（只跑该 App 已启用子任务）不同"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M5.2 3.4v9.2L13 8 5.2 3.4z" fill="currentColor"/></svg>启动流水线</button>
+    <button id="btnStop" class="btn danger" type="button" title="停止流水线或批量执行（run-all）"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.6" fill="currentColor"/></svg>停止</button>
+    <button id="btnSettings" class="icon-btn" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="currentColor"/></svg></button>
+  </div>
+</div>
+
+<div class="statusline anim-block d1">
+  <span class="dot" id="dot"></span>
+  <span id="stateText">连接中…</span>
+  <span id="stateDetail"></span>
+  <span class="runall-badge" id="runAllBadge" hidden></span>
+  <button id="btnRefreshStatus" class="btn ghost sm" type="button" title="立即刷新状态/进度/日志">刷新状态</button>
+</div>
+
+<div class="grid">
+  <div class="card anim-block d2">
+    <h3>当前进度</h3>
+    <div class="kv"><span class="k">流水线索引</span><span class="v" id="idx">—</span></div>
+    <div class="kv"><span class="k">当前 App</span><span class="v" id="app">—</span></div>
+    <div class="kv"><span class="k">已完成任务</span><span class="v acc" id="doneCount">0</span></div>
+    <div class="kv"><span class="k">运行中任务</span><span class="v" id="liveTask">—</span></div>
+    <div class="kv"><span class="k">当前节点</span><span class="v" id="liveNode">—</span></div>
+    <button id="btnGoLive" class="btn ghost sm" type="button" hidden
+      title="在新窗口打开该任务的画布，并自动定位/跟随运行中的节点">⤢ 跳转到运行中任务的画布</button>
+  </div>
+  <div class="card anim-block d3">
+    <h3>待手动处理 <span style="color:var(--warn);font-size:11px" id="failCount"></span><button class="btn ghost sm" id="btnClearFail" type="button" title="将全部待处理记录标记为已处理（保留历史审计）" style="margin-left:8px">清理信息</button></h3>
+    <div id="failures"><span class="empty">加载中…</span></div>
+  </div>
+</div>
+
+<div class="card anim-block d4">
+  <div class="card-head">
+    <h3>已配置自动化 App</h3>
+    <div class="ops">
+      <span class="task-count" id="appCount"></span>
+      <button class="btn ghost sm" id="btnScanApps" type="button" title="扫描 MuMu 模拟器中已安装的应用">扫描设备应用</button>
+      <a class="btn ghost sm" href="/pipeline_editor.html" target="_blank" rel="noopener">打开编排面板</a>
+    </div>
+  </div>
+  <div class="app-layer-hint">App 勾选 = 启动流水线时是否包含该 App；任务勾选 =「运行自动化」时是否执行。顶栏「启动流水线」按编排步骤跑，App 行「运行自动化」只跑该 App 已启用子任务。</div>
+  <div class="apps-box" id="appList"></div>
+  <div class="empty" id="appEmpty" hidden>尚未配置自动化 App — 在「流水线编排」中添加后，可在此处管理每个 App 的子任务。</div>
+</div>
+
+<div class="card anim-block d5">
+  <div class="card-head">
+    <h3>MuMu 模拟器状态</h3>
+    <div class="ops">
+      <button id="btnRefreshMumu" class="btn ghost sm">刷新状态</button>
+    </div>
+  </div>
+  <div class="mumu-grid">
+    <div class="mumu-main">
+      <span class="mumu-dot" id="mumuDot"></span>
+      <div>
+        <div class="mumu-state" id="mumuState">检测中…</div>
+        <div class="mumu-detail" id="mumuDetail"></div>
+      </div>
+    </div>
+    <div class="mumu-sub">
+      <div class="kv"><span class="k">Android</span><span class="v"><i class="sd" id="mumuAndroidDot"></i><span id="mumuAndroid">—</span></span></div>
+      <div class="kv"><span class="k">ADB</span><span class="v"><i class="sd" id="mumuAdbDot"></i><span id="mumuAdb">—</span></span></div>
+    </div>
+    <div class="mumu-ops">
+      <button id="btnMumuStart" class="btn primary sm">启动</button>
+      <button id="btnMumuStop" class="btn danger sm">关闭</button>
+      <button id="btnMumuAdb" class="btn ghost sm" title="模拟器在跑但 adb 失联时，一键重连 ADB（含 kill-server 复位）">连接 adb</button>
+    </div>
+  </div>
+</div>
+
+<div class="card anim-block d6">
+  <h3>运行日志</h3>
+  <div class="tabbar">
+    <span class="tab on" data-tab="print">打印输出 prints.log</span>
+    <span class="tab" data-tab="app">运行日志 app.log</span>
+    <div class="log-filter">
+      <input type="search" id="logFilterQ" placeholder="过滤关键字…" aria-label="日志关键字过滤" />
+      <label title="仅显示 ERROR/CRITICAL"><input type="checkbox" id="logFilterErr" /> 只看错误</label>
+    </div>
+    <span class="log-pause-hint" id="logPauseHint" hidden>⏸ 已暂停刷新（正在选中文本），取消选中后自动恢复</span>
+  </div>
+  <div class="logbox printbox" id="log"></div>
+</div>
+
+<footer>autofw · 主控制台 v3.1 · 状态每 3 秒刷新 · 模拟器状态每 5 秒刷新</footer>
+</div>
+
+<!-- 设置弹窗 -->
+<div class="modal" id="settingsModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>设置</h3>
+      <button class="icon-btn" id="btnCloseSettings" title="关闭" aria-label="关闭"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+    </div>
+    <label class="setting-row">
+      <input type="checkbox" id="chkAnim" checked>
+      <span>启用界面动画</span>
+    </label>
+    <p class="hint">关闭后禁用所有过渡与加载动画（选择保存在本地，刷新页面后仍生效）。</p>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast"></div>
+
+<script>
+/* ================= 工具 ================= */
+let curTab = "print";
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function toast(msg, kind) {
+  const box = $("toast");
+  const t = document.createElement("div");
+  t.className = "t" + (kind ? " " + kind : "");
+  t.textContent = msg;
+  box.appendChild(t);
+  /* P1：错误信息停留更久，便于阅读 */
+  const hold = kind === "err" ? 6000 : 2600;
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; }, hold);
+  setTimeout(() => t.remove(), hold + 400);
+}
+
+/* fetch 封装：JSON + 超时（AbortController） */
+async function api(path, opts, timeoutMs) {
+  const ms = timeoutMs || 6000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const init = Object.assign({ signal: ctrl.signal }, opts || {});
+    if (init.body && !init.headers) init.headers = { "Content-Type": "application/json" };
+    const r = await fetch(path, init);
+    const ct = r.headers.get("content-type") || "";
+    if (ct.indexOf("json") >= 0) return r.json();
+    return { ok: false, error: "非 JSON 响应 (" + r.status + ")" };
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("请求超时");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* 内联 SVG 图标（CSS 图标，不使用 emoji） */
+const ICON = {
+  caret: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.6 6l4.4 4.4L12.4 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  grip: '<svg viewBox="0 0 10 22" width="10" height="22" aria-hidden="true"><circle cx="3" cy="4" r="1.25" fill="currentColor"/><circle cx="7" cy="4" r="1.25" fill="currentColor"/><circle cx="3" cy="11" r="1.25" fill="currentColor"/><circle cx="7" cy="11" r="1.25" fill="currentColor"/><circle cx="3" cy="18" r="1.25" fill="currentColor"/><circle cx="7" cy="18" r="1.25" fill="currentColor"/></svg>',
+  open: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M7 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9M10 2.5h3.5V6M13.5 2.5L8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>',
+  plus: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
+};
+
+/* ================= 动画偏好 ================= */
+function applyAnimPref() {
+  let on = true;
+  try { on = localStorage.getItem("autofw_anim_enabled") !== "0"; } catch (e) {}
+  document.documentElement.classList.toggle("no-anim", !on);
+  return on;
+}
+function openSettings() { $("chkAnim").checked = applyAnimPref(); $("settingsModal").classList.add("open"); }
+function closeSettings() { $("settingsModal").classList.remove("open"); }
+
+/* ================= 运行日志渲染（R13：进度直观 + 复制不被刷新打断） ================= */
+const logState = { lastKey: "", raw: [] };
+const appNameMap = new Map();   /* pkg -> 显示名（renderApps 维护，进度条用） */
+const logFilter = { q: "", errOnly: false };
+function applyLogFilters(logs) {
+  let out = logs || [];
+  if (logFilter.errOnly) out = out.filter((line) => /\b(ERROR|CRITICAL)\b/i.test(line) || /失败|error|Failed/i.test(line));
+  const q = (logFilter.q || "").trim().toLowerCase();
+  if (q) out = out.filter((line) => String(line).toLowerCase().indexOf(q) >= 0);
+  return out;
+}
+function syncRunAllButtons() {
+  document.querySelectorAll(".app-run-btn").forEach((btn) => {
+    const pkg = btn.closest(".app-row") && btn.closest(".app-row").dataset.pkg;
+    const busy = !!(runAllUi && runAllUi.running);
+    const same = busy && runAllUi.pkg === pkg;
+    if (same) {
+      btn.disabled = true;
+      btn.classList.add("running");
+      btn.textContent = "运行中 " + (runAllUi.taskIndex || 0) + "/" + (runAllUi.total || 0) + "…";
+    } else if (busy) {
+      btn.disabled = true;
+      btn.classList.remove("running");
+      if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+      btn.textContent = "流水线占用中";
+    } else {
+      btn.disabled = false;
+      btn.classList.remove("running");
+      if (btn.dataset.orig) { btn.textContent = btn.dataset.orig; }
+      else if (!/运行自动化/.test(btn.textContent || "")) btn.textContent = "▶ 运行自动化";
+    }
+  });
+}
+
+function logSelectionActive() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return false;
+  return $("log").contains(sel.anchorNode);
+}
+
+function fmtIntentLine(line) {
+  /* intent.log 是 epoch 时间戳：1786772508.847 xxx → HH:MM:SS xxx */
+  const m = line.match(/^(\d{10})(?:\.\d+)?\s+(.*)$/);
+  if (!m) return line;
+  const d = new Date(Number(m[1]) * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) + "  " + m[2];
+}
+
+function renderLog(logs) {
+  const box = $("log");
+  logState.raw = logs || [];
+  const filtered = applyLogFilters(logState.raw);
+  const key = curTab + "\u0001" + logFilter.q + "\u0001" + logFilter.errOnly + "\u0001" + (filtered.length ? filtered.join("\n") : "");
+  if (key === logState.lastKey) return;
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.textContent = "";
+  const filterOn = !!(logFilter.q || logFilter.errOnly);
+  if (!filtered.length) {
+    box.textContent = filterOn
+      ? ("（无匹配日志" + (logFilter.errOnly ? " · 只看错误" : "") + (logFilter.q ? " · " + logFilter.q : "") + "）")
+      : (curTab === "print" ? "（暂无打印输出）" : "（暂无日志）");
+    logState.lastKey = key;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  filtered.forEach((raw, i) => {
+    const text = raw;
+    const div = document.createElement("div");
+    div.className = "ll" + (i === filtered.length - 1 ? " ll-cur" : "");
+    const m = text.match(/^(\S+ \S+) (\S+) (INFO|WARNING|ERROR|CRITICAL|DEBUG)\s+(.*)$/);
+    if (m) {
+      div.innerHTML = '<span class="ll-t">' + esc(m[1]) + '</span>' +
+        '<span class="ll-lv lv-' + m[3].toLowerCase() + '">' + esc(m[3]) + '</span>' +
+        '<span class="ll-m">' + esc(m[4]) + '</span>';
+    } else {
+      div.textContent = text;
+    }
+    frag.appendChild(div);
+  });
+  box.appendChild(frag);
+  logState.lastKey = key;
+  if (stick) box.scrollTop = box.scrollHeight;
+}
+
+document.addEventListener("selectionchange", () => {
+  $("logPauseHint").hidden = !logSelectionActive();
+});
+
+/* ================= 状态行（3 秒轮询） ================= */
+const runAllUi = { pkg: null, running: false, taskIndex: 0, total: 0 };
+
+async function refresh() {
+  try {
+    const s = await api("/api/status");
+    const run = s.running;
+    let ra = null;
+    try { ra = await api("/api/flows/runstatus", {}, 4000); } catch (e0) { ra = null; }
+    const raRun = !!(ra && ra.running);
+    runAllUi.running = raRun;
+    runAllUi.pkg = raRun ? ra.pkg : null;
+    runAllUi.taskIndex = ra ? (ra.task_index || 0) : 0;
+    runAllUi.total = ra ? (ra.total || 0) : 0;
+    const anyRun = run || raRun;
+    $("dot").className = "dot " + (anyRun ? "run" : "stop");
+    $("stateText").textContent = run ? "运行中" : (raRun ? "批量执行中" : "已停止");
+    const badge = $("runAllBadge");
+    if (raRun && badge) {
+      badge.hidden = false;
+      const label = (ra.pkg && appNameMap.get(ra.pkg)) || ra.pkg || "";
+      badge.textContent = "run-all " + (ra.task_index || 0) + "/" + (ra.total || 0) + (label ? " · " + label : "") + (ra.task_name ? " · " + ra.task_name : "");
+    } else if (badge) {
+      badge.hidden = true;
+    }
+    // 进程已退出：显示退出码，便于排查"秒退"黑盒（exit_code=2 是 Gate 自检门拒绝启动）
+    if (!run && !raRun && s.exit_code != null) {
+      if (s.exit_code === 2) {
+        $("stateDetail").textContent = "已停止（Gate 自检门拒绝启动，见状态.log / 运行日志）";
+      } else if (s.exit_code != 0) {
+        $("stateDetail").textContent = "已停止（进程退出码 %d，见 pipeline_stderr.log）".replace("%d", s.exit_code);
+      } else {
+        $("stateDetail").textContent = "空闲（上次正常结束）";
+      }
+    } else if (raRun) {
+      $("stateDetail").textContent = "正在执行 " + (ra.task_name || ra.task_id || "任务") + "（" + (ra.task_index || 0) + "/" + (ra.total || 0) + "）";
+    } else {
+      $("stateDetail").textContent = run && s.app ? "当前任务: " + s.app : "空闲";
+    }
+    $("idx").textContent = s.pipeline_index;
+    if (run && s.app) {
+      $("app").textContent = s.app || "—";
+    } else if (raRun && ra.pkg) {
+      $("app").textContent = (appNameMap.get(ra.pkg) || ra.pkg) + "（run-all）";
+    } else if (s.app) {
+      $("app").textContent = "—（上次：" + (appNameMap.get(s.app) || s.app) + "）";
+    } else {
+      $("app").textContent = "—";
+    }
+    const done = s.completed || [];
+    $("doneCount").textContent = raRun ? ((ra.done && ra.done.length) || 0) : done.length;
+    // 61 轮：流水线实时任务/节点（/api/status.live ← state/pipeline_live.json）+ 跳转画布
+    const lv = s.live || {};
+    const lt = $("liveTask"), ln = $("liveNode"), gb = $("btnGoLive");
+    if (lt) lt.textContent = lv.running && lv.task_name ? lv.task_name : "—";
+    if (ln) ln.textContent = lv.running
+      ? (lv.node_name ? lv.node_name + "（" + (lv.node_type || "?") + "）" : "等待节点…")
+      : "—";
+    if (lt && raRun && !(lv.running && lv.task_name)) lt.textContent = ra.task_name || ra.task_id || "—";
+    if (gb) {
+      const showLive = !!(lv.running && lv.pkg && lv.task_id && lv.node_id);
+      gb.hidden = !showLive;
+      gb.style.display = showLive ? "" : "none";
+      if (showLive) gb.onclick = () => window.open("/flow_editor.html?pkg=" +
+        encodeURIComponent(lv.pkg) + "&task=" + encodeURIComponent(lv.task_id) +
+        "&focus=1", "_blank");
+    }
+    /* 用户正在选中日志文本时暂停刷新：避免 DOM 被替换导致选区乱跳、无法复制 */
+    if (!logSelectionActive()) {
+      // 打印输出 tab 显示 prints.log（打印节点消息），运行日志 tab 显示 app.log
+      renderLog(curTab === "print" ? s.print_tail : s.log_tail);
+    }
+    $("btnStart").disabled = anyRun;
+    $("btnStop").disabled = !anyRun;
+    syncRunAllButtons();
+  } catch (e) {
+    $("stateText").textContent = "面板服务连接失败";
+    $("stateDetail").textContent = "请确认 gui/server.py 正在运行";
+  }
+}
+
+async function pipelineAction(act) {
+  const btn = act === "start" ? $("btnStart") : $("btnStop");
+  btn.disabled = true;
+  try {
+    let url = "/api/" + act;
+    if (act === "stop") {
+      /* 2026-09-30 修复：批量执行(run-all)与单任务运行跑在面板进程内线程，
+         须走 /api/flows/stop（置停止标志 + 当前任务 Runner.stop）；
+         仅 main.py 子进程流水线走 /api/stop。此前 run-all 时按「停止」
+         打到 /api/stop 被回复「流水线未在运行」，按钮表现为无效果。 */
+      let ra = null;
+      try { ra = await api("/api/flows/runstatus", {}, 4000); } catch (e0) { ra = null; }
+      if (ra && ra.running) url = "/api/flows/stop";
+    }
+    const r = await api(url, { method: "POST" }, 8000);
+    if (r && r.ok === false) { toast(r.message || r.error || r.msg || "操作失败", "err"); return; }
+    $("stateDetail").textContent = r.msg || (act === "start" ? "已启动" : "已停止");
+  } catch (e) {
+    toast((act === "start" ? "启动失败：" : "停止失败：") + e.message, "err");
+  } finally {
+    setTimeout(refresh, 1500);
+  }
+}
+
+/* ================= MuMu 模拟器状态 ================= */
+let lastMumu = null;
+let mumuBusy = "";
+
+function renderMumu(m) {
+  lastMumu = m || {};
+  const s = String(m.state || "").toLowerCase();
+  let label, cls = "off", detail = m.detail || "";
+  if (["running", "started", "on"].indexOf(s) >= 0) { label = "运行中"; cls = "ok"; }
+  else if (s === "starting") { label = "启动中…"; cls = "warn"; }
+  else if (s === "stopping") { label = "关闭中…"; cls = "warn"; }
+  else if (["stopped", "stop", "off", "idle"].indexOf(s) >= 0) { label = "未运行"; cls = "off"; }
+  else if (["not_installed", "uninstalled", "missing", "not-installed", "no_install"].indexOf(s) >= 0) { label = "未安装"; cls = "err"; }
+  else if (m.android_started) { label = "运行中"; cls = "ok"; if (!detail) detail = "Android 已启动"; }
+  else if (m.detected && m.running) { label = "已启动（Android 启动中）"; cls = "warn"; }
+  else if (m.detected) { label = "已检测到"; cls = "warn"; }
+  else if (m.adb_ok) { label = "已检测到（adb 连通）"; cls = "warn"; }
+  else { label = "未检测到模拟器"; cls = "off"; }
+
+  $("mumuState").textContent = label;
+  $("mumuDot").className = "mumu-dot " + cls;
+  $("mumuDetail").textContent = detail || "";
+
+  const androidOk = !!m.android_started;
+  $("mumuAndroid").textContent = androidOk ? "已启动" : (m.detected || m.running ? "未启动" : "—");
+  $("mumuAndroidDot").className = "sd " + (androidOk ? "ok" : (m.detected || m.running ? "off" : "na"));
+  const adbOk = !!m.adb_ok;
+  $("mumuAdb").textContent = adbOk ? "已连接 127.0.0.1:16384" : "未连接";
+  $("mumuAdbDot").className = "sd " + (adbOk ? "ok" : "off");
+
+  const busyState = (s === "starting" || s === "stopping") || mumuBusy !== "";
+  const notInstalled = ["not_installed", "uninstalled", "missing", "not-installed", "no_install"].indexOf(s) >= 0;
+  $("btnMumuStart").disabled = busyState || !!m.android_started || notInstalled;
+  $("btnMumuStop").disabled = busyState || !m.android_started;
+  $("btnMumuAdb").disabled = busyState || notInstalled;
+}
+
+async function refreshOverview() {
+  try {
+    const o = await api("/api/overview", {}, 6000);
+    renderMumu(o.mumu || {});
+  } catch (e) {
+    $("mumuState").textContent = "检测失败";
+    $("mumuDetail").textContent = e.message;
+    $("mumuDot").className = "mumu-dot err";
+  }
+}
+
+async function mumuAction(act) {
+  if (mumuBusy) return;
+  mumuBusy = act;
+  const isAdb = act === "adb";
+  const btn = isAdb ? $("btnMumuAdb") : (act === "start" ? $("btnMumuStart") : $("btnMumuStop"));
+  const other = isAdb ? null : (act === "start" ? $("btnMumuStop") : $("btnMumuStart"));
+  btn.disabled = true;
+  if (other) other.disabled = true;
+  const busyText = isAdb ? "连接中…" : (act === "start" ? "启动中…" : "关闭中…");
+  const idleText = isAdb ? "连接 adb" : (act === "start" ? "启动" : "关闭");
+  btn.textContent = busyText;
+  try {
+    const r = await api("/api/mumu/" + (act === "adb" ? "adb_connect" : act), { method: "POST" }, 15000);
+    if (r && r.ok === false) {
+      toast((isAdb ? "连接失败：" : (act === "start" ? "启动失败：" : "关闭失败：")) +
+            (r.detail || r.message || r.error || "未知错误"), "err");
+    } else {
+      if (r && r.state) renderMumu(Object.assign({}, lastMumu || {}, { state: r.state, detail: r.detail || "" }));
+      toast(r.detail || r.msg || (isAdb ? "连接指令已发送" : (act === "start" ? "启动指令已发送" : "关闭指令已发送")),
+            (r && r.adb_ok) || (r && r.state) ? "" : "ok");
+    }
+  } catch (e) {
+    toast((isAdb ? "连接失败：" : (act === "start" ? "启动失败：" : "关闭失败：")) + e.message, "err");
+  } finally {
+    mumuBusy = "";
+    btn.textContent = idleText;
+    renderMumu(lastMumu || {});
+    setTimeout(refreshOverview, 3000); /* 操作后 3 秒自动再探测 */
+  }
+}
+
+/* ================= 待手动处理（失败任务） ================= */
+const STATUS_LABEL = { pending: "待处理", handled: "已处理", ignored: "已忽略", retried: "已重试" };
+async function refreshFailures() {
+  try {
+    const d = await api("/api/failures", {}, 6000);
+    $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 共 " + d.count + "）";
+    const clearBtn = $("btnClearFail");
+    if (clearBtn) {
+      const none = !d.failures || !d.failures.length || !(d.pending || 0);
+      clearBtn.disabled = none;
+      clearBtn.title = none ? "暂无待处理记录" : "将全部待处理记录标记为已处理（保留历史审计）";
+    }
+    const box = $("failures");
+    if (!d.failures || !d.failures.length) {
+      box.innerHTML = '<span class="empty">暂无失败任务</span>';
+      return;
+    }
+    box.innerHTML = "";
+    d.failures.slice(0, 20).forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "fail-row";
+      const tasks = Array.isArray(f.task) ? f.task.join(",") : f.task;
+      row.innerHTML =
+        '<div class="fmain">' +
+          '<span class="ftag ' + esc(f.status) + '">' + esc(STATUS_LABEL[f.status] || f.status) + '</span>' +
+          '<span class="ft">' + esc(f.time) + ' · ' + esc(f.app || "?") + ' · ' + esc(tasks) + '</span>' +
+          '<div class="fr">' + esc(f.reason || "") + '</div>' +
+        '</div>' +
+        '<div class="fops">' +
+          (f.status === "pending" ?
+            '<button class="btn sm ghost" data-a="handled">已处理</button>' +
+            '<button class="btn sm ghost" data-a="ignored">忽略</button>' +
+            '<button class="btn sm ghost" data-a="retried">重试</button>' :
+            '<span class="empty">' + esc(((f.history && f.history[f.history.length - 1]) || {}).action || "") + '</span>') +
+        '</div>';
+      row.querySelectorAll("[data-a]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            await api("/api/failures/" + encodeURIComponent(f.id) + "/mark", {
+              method: "POST",
+              body: JSON.stringify({ action: btn.dataset.a })
+            }, 6000);
+          } catch (e) { toast("操作失败：" + e.message, "err"); }
+          refreshFailures();
+        });
+      });
+      box.appendChild(row);
+    });
+  } catch (e) {
+    $("failures").innerHTML = '<span class="empty" style="color:var(--err)">失败台账加载失败：' + esc(e.message) + "</span>";
+  }
+}
+
+/* 一键清理：把全部待处理失败记录批量标记为已处理（服务端保留审计历史） */
+$("btnClearFail").addEventListener("click", async () => {
+  if (!confirm("确认清空待手动处理列表？（全部标记为已处理，保留历史记录）")) return;
+  const btn = $("btnClearFail");
+  btn.disabled = true;
+  try {
+    const d = await api("/api/failures/clear", { method: "POST" }, 6000);
+    toast("已清理 " + (d.cleared || 0) + " 条记录", "ok");
+  } catch (e) {
+    toast("清理失败：" + e.message, "err");
+  }
+  btn.disabled = false;
+  refreshFailures();
+});
+
+/* ================= 已配置自动化 App 面板 ================= */
+const appState = { expanded: new Set(), tasks: {}, loaded: {}, refreshing: false };
+let dragId = null;
+
+function rowForPkg(pkg) {
+  let out = null;
+  document.querySelectorAll(".app-row").forEach((r) => { if (r.dataset.pkg === pkg) out = r; });
+  return out;
+}
+
+async function refreshApps(silent) {
+  if (appState.refreshing) return;
+  appState.refreshing = true;
+  let apps = [];
+  let failMsg = "";
+  try {
+    const p = await api("/api/pipeline", {}, 8000);
+    apps = Array.isArray(p.apps) ? p.apps : [];
+    failMsg = p.error || "";
+  } catch (e) {
+    failMsg = e.message;
+  }
+  if (!apps.length) {
+    /* 兜底：从 /api/flows 列出有 flow 的 pkg */
+    try {
+      const f = await api("/api/flows", {}, 8000);
+      const fl = Array.isArray(f.flows) ? f.flows : [];
+      apps = fl.filter((x) => x && x.pkg).map((x) => ({ pkg: x.pkg, name: x.name || x.pkg, enabled: true, steps: [] }));
+      failMsg = "";
+    } catch (e2) {
+      failMsg = failMsg || e2.message;
+    }
+  }
+  appState.refreshing = false;
+  if (!apps.length && !silent && failMsg) toast("App 列表加载失败：" + failMsg, "err");
+  renderApps(apps);
+}
+
+function renderApps(apps) {
+  apps.forEach((a) => appNameMap.set(a.pkg, a.name || a.pkg));   /* 供日志进度条显示 App 名 */
+  const box = $("appList");
+  $("appCount").textContent = apps.length ? "共 " + apps.length + " 个" : "";
+  if (!apps.length) { box.innerHTML = ""; $("appEmpty").hidden = false; return; }
+  $("appEmpty").hidden = true;
+
+  /* 保留已展开/已加载的任务状态 */
+  const keep = new Map();
+  box.querySelectorAll(".app-row").forEach((row) => {
+    const pkg = row.dataset.pkg;
+    if (apps.some((a) => a.pkg === pkg)) keep.set(pkg, { open: row.classList.contains("open") });
+  });
+
+  box.innerHTML = "";
+  apps.forEach((a) => {
+    const row = document.createElement("div");
+    const wasOpen = !!(keep.get(a.pkg) && keep.get(a.pkg).open);
+    row.className = "app-row" + (wasOpen ? " open" : "");
+    row.dataset.pkg = a.pkg;
+    row.innerHTML =
+      '<div class="app-head">' +
+        '<button class="caret-btn" type="button" title="展开/收起任务" aria-label="展开/收起任务">' + ICON.caret + '</button>' +
+        '<button class="caret-btn plus-btn" type="button" title="增加app任务/操作" aria-label="增加app任务/操作">' + ICON.plus + '</button>' +
+        '<label class="chk app-chk" title="流水线启停：勾选后启动流水线时包含该 App"><input type="checkbox" class="app-enabled"' + (a.enabled !== false ? " checked" : "") + '><span class="box"></span></label>' +
+        '<div class="app-id"><div class="app-name">' + esc(a.name || a.pkg) + '</div><div class="app-pkg">' + esc(a.pkg) + '</div></div>' +
+        '<span class="task-count"></span>' +
+        '<button class="btn primary sm app-run-btn" type="button" title="只运行该 App 下已启用（勾选）的自动化流程">▶ 运行自动化</button>' +
+        '<a class="btn ghost sm flow-link" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(a.pkg) + '">' + ICON.open + '图形化编排</a>' +
+        '<button class="btn ghost sm app-del-btn" type="button" title="删除此 App 及所有子任务" style="color:var(--err,#BC5F51);margin-left:4px">' + ICON.trash + ' 删除</button>' +
+      '</div>' +
+      '<div class="app-layer-note app-layer-hint" hidden style="padding:0 14px 8px"></div>' +
+      '<div class="tasks-wrap"><div class="tasks-inner"><div class="task-list"></div></div></div>';
+    row.querySelector(".caret-btn").addEventListener("click", () => toggleApp(row, a));
+    row.querySelector(".app-enabled").addEventListener("change", async (ev) => {
+      const chk = ev.currentTarget;
+      const want = chk.checked;
+      try {
+        const r = await api("/api/pipeline/apps/" + encodeURIComponent(a.pkg) + "/toggle", { method: "POST" }, 8000);
+        if (r && r.ok === false) throw new Error(r.error || r.msg || "切换失败");
+        if (r && typeof r.enabled === "boolean") chk.checked = r.enabled;
+        a.enabled = (r && typeof r.enabled === "boolean") ? r.enabled : want;
+        const noteEl = row.querySelector(".app-layer-note");
+        if (noteEl) {
+          noteEl.textContent = (a.enabled === false
+            ? "该 App 已停用：启动流水线会跳过；下方任务勾选仅影响「运行自动化」。"
+            : "App 已勾选：启动流水线时会包含本 App。任务勾选决定「运行自动化」执行哪些子任务。");
+        }
+        toast((r && r.msg) || (a.enabled ? "已启用 " : "已停用 ") + (a.name || a.pkg), "ok");
+      } catch (e) {
+        chk.checked = !want;
+        toast("App 启停失败：" + e.message, "err");
+      }
+    });
+    row.querySelector(".app-run-btn").addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget;
+      const label = a.name || a.pkg;
+      btn.dataset.orig = btn.dataset.orig || "▶ 运行自动化";
+      let tasks = appState.tasks[a.pkg];
+      if (!tasks) {
+        try {
+          const d0 = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg), {}, 8000);
+          tasks = (d0 && d0.tasks) || [];
+          appState.tasks[a.pkg] = tasks;
+          appState.loaded[a.pkg] = true;
+        } catch (e) { tasks = []; }
+      }
+      const sorted = tasks.slice().sort((x, y) => ((x.order == null ? 0 : x.order) - (y.order == null ? 0 : y.order)));
+      const on = sorted.filter((t) => t && t.enabled !== false);
+      const off = sorted.filter((t) => !t || t.enabled === false);
+      const lines = on.length
+        ? on.map((t, i) => "  " + (i + 1) + ". " + (t.name || t.id)).join("\n")
+        : "  （无已启用任务，启动会被拒绝）";
+      const offLine = off.length ? "\n\n将跳过（未勾选）：" + off.map((t) => t.name || t.id).join("、") : "";
+      const msg = "运行「" + label + "」下已启用的自动化流程？\n" +
+        "（仅该 App 的 run-all，不是顶栏「启动流水线」）\n\n" +
+        "将执行 " + on.length + " 个任务：\n" + lines + offLine + "\n\n确认启动？";
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      btn.textContent = "启动中…";
+      try {
+        const r = await api("/api/flows/" + encodeURIComponent(a.pkg) + "/run-all", { method: "POST" }, 10000);
+        if (r && r.ok === false) throw new Error(r.error || r.msg || "启动失败");
+        toast((r && r.msg) || ("已启动 " + label), "ok");
+        setTimeout(refresh, 400);
+      } catch (e) {
+        toast("运行启动失败：" + e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.orig || "▶ 运行自动化";
+        syncRunAllButtons();
+      }
+    });
+    row.querySelector(".app-del-btn").addEventListener("click", async () => {
+      if (!confirm('确定删除「' + (a.name || a.pkg) + '」？\n此操作将同时删除该 App 下的所有子任务，不可恢复。')) return;
+      try {
+        const r = await api("/api/pipeline/apps/" + encodeURIComponent(a.pkg), { method: "DELETE" }, 8000);
+        if (r && r.ok === false) throw new Error(r.error || "删除失败");
+        toast("已删除 " + (a.name || a.pkg), "ok");
+        refreshApps(true);
+      } catch (e) {
+        toast("删除失败：" + e.message, "err");
+      }
+    });
+    row.querySelector(".plus-btn").addEventListener("click", async () => {
+      /* 点击“＋”直接新增一个子任务（自动命名 新任务N），展开列表并刷新 */
+      try {
+        let n = 1;
+        try {
+          const d0 = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg), {}, 8000);
+          const ts = Array.isArray(d0 && d0.tasks) ? d0.tasks : [];
+          const names = new Set(ts.map((t) => t.name));
+          n = ts.length + 1;
+          while (names.has("新任务" + n)) n++;
+        } catch (e0) { /* 取不到列表就用默认序号 */ }
+        const name = "新任务" + n;
+        const rr = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg) + "/add", {
+          method: "POST", body: JSON.stringify({ name })
+        }, 8000);
+        if (rr && rr.ok === false) throw new Error(rr.message || rr.error || "添加失败");
+        toast("已添加任务「" + name + "」，点名称旁的铅笔可重命名", "ok");
+        const r = rowForPkg(a.pkg) || row;
+        if (!r.classList.contains("open")) r.classList.add("open");
+        await loadTasks(r, a.pkg, true);
+      } catch (e) {
+        toast("添加失败：" + e.message, "err");
+      }
+    });
+    const noteEl = row.querySelector(".app-layer-note");
+    if (noteEl) {
+      noteEl.textContent = (a.enabled === false
+        ? "该 App 已停用：启动流水线会跳过；下方任务勾选仅影响「运行自动化」。"
+        : "App 已勾选：启动流水线时会包含本 App。任务勾选决定「运行自动化」执行哪些子任务。");
+      noteEl.hidden = !wasOpen;
+    }
+    if (wasOpen) {
+      if (appState.loaded[a.pkg]) renderTasks(row, a.pkg, appState.tasks[a.pkg] || []);
+      else loadTasks(row, a.pkg);
+    }
+    box.appendChild(row);
+  });
+}
+
+function toggleApp(row, a) {
+  const willOpen = !row.classList.contains("open");
+  row.classList.toggle("open", willOpen);
+  if (willOpen) {
+    if (appState.loaded[a.pkg]) renderTasks(row, a.pkg, appState.tasks[a.pkg] || []);
+    else loadTasks(row, a.pkg);
+  }
+  const note = row.querySelector(".app-layer-note");
+  if (note) note.hidden = !willOpen;
+}
+
+async function loadTasks(row, pkg, force) {
+  const list = row.querySelector(".task-list");
+  if (!force && appState.loaded[pkg]) { renderTasks(row, pkg, appState.tasks[pkg] || []); return; }
+  list.innerHTML = '<div class="task-hint">任务加载中…</div>';
+  let tasks = [];
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg), {}, 8000);
+    if (r && Array.isArray(r.tasks)) tasks = r.tasks;
+    else if (r && r.ok === false) throw new Error(r.message || r.error || "任务接口返回错误");
+    else if (r && r.error) throw new Error(r.error);
+    else throw new Error("任务接口响应格式异常");
+  } catch (e) {
+    appState.loaded[pkg] = false;
+    list.innerHTML = '<div class="task-hint err">任务列表加载失败：' + esc(e.message) + '</div>';
+    appendAddRow(list, pkg);
+    return;
+  }
+  appState.tasks[pkg] = tasks;
+  appState.loaded[pkg] = true;
+  renderTasks(row, pkg, tasks);
+}
+
+function enabledCount(tasks) {
+  return (tasks || []).filter((t) => t && t.enabled !== false).length;
+}
+
+function renderTasks(row, pkg, tasks) {
+  const list = row.querySelector(".task-list");
+  const sorted = tasks.slice().sort((a, b) => ((a.order == null ? 0 : a.order) - (b.order == null ? 0 : b.order)));
+  list.innerHTML = "";
+  if (!sorted.length) list.innerHTML = '<div class="task-hint">暂无任务</div>';
+  const bar = document.createElement("div");
+  bar.className = "task-toolbar";
+  bar.innerHTML =
+    '<button type="button" data-bulk="all" title="勾选全部任务">全选</button>' +
+    '<button type="button" data-bulk="none" title="取消全部任务勾选">全不选</button>' +
+    '<span class="hint">启用 ' + enabledCount(sorted) + " / " + sorted.length + ' · 勾选后才会被「运行自动化」执行</span>';
+  bar.querySelector('[data-bulk="all"]').addEventListener("click", () => bulkToggleTasks(pkg, row, true));
+  bar.querySelector('[data-bulk="none"]').addEventListener("click", () => bulkToggleTasks(pkg, row, false));
+  if (sorted.length) list.appendChild(bar);
+  sorted.forEach((t) => {
+    const el = taskRowEl(pkg, t);
+    list.appendChild(el);
+    bindTaskDnD(el, pkg);
+  });
+  const cnt = row.querySelector(".task-count");
+  cnt.textContent = sorted.length
+    ? (enabledCount(sorted) + "/" + sorted.length + " 启用")
+    : "";
+  cnt.title = "已启用子任务 / 总任务（运行自动化只跑已启用的）";
+  const link = row.querySelector(".flow-link");
+  const def = sorted.find((t) => t.enabled) || sorted[0];
+  if (def && def.id != null) {
+    link.href = "/flow_editor.html?pkg=" + encodeURIComponent(pkg) + "&task=" + encodeURIComponent(def.id);
+  }
+  appendAddRow(list, pkg);
+}
+
+async function bulkToggleTasks(pkg, row, enable) {
+  const tasks = appState.tasks[pkg] || [];
+  let ok = 0, fail = 0;
+  for (const t of tasks) {
+    const want = !!enable;
+    if ((t.enabled !== false) === want) { ok++; continue; }
+    try {
+      const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/toggle", {
+        method: "POST", body: JSON.stringify({ id: t.id, enabled: want })
+      }, 8000);
+      if (r && r.ok === false) fail++;
+      else { t.enabled = want; ok++; }
+    } catch (e) { fail++; }
+  }
+  toast((enable ? "已全选 " : "已全不选 ") + ok + " 个任务" + (fail ? "，失败 " + fail : ""), fail ? "err" : "ok");
+  await loadTasks(row, pkg, true);
+}
+
+function taskRowEl(pkg, t) {
+  const row = document.createElement("div");
+  row.className = "task-row";
+  row.dataset.id = String(t.id);
+  row.innerHTML =
+    '<span class="grip" title="拖拽排序">' + ICON.grip + '</span>' +
+    '<label class="chk" title="启用/停用"><input type="checkbox"' + (t.enabled ? " checked" : "") + '><span class="box"></span></label>' +
+    '<span class="task-name">' + esc(t.name || t.id) + '</span>' +
+    '<button class="op rename-op" type="button" title="重命名" data-act="rename">' + ICON.pencil + '</button>' +
+    '<div class="task-ops">' +
+      '<a class="op" title="图形化编辑" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(pkg) + '&task=' + encodeURIComponent(t.id) + '">' + ICON.open + '</a>' +
+      '<button class="op danger" type="button" title="删除" data-act="delete">' + ICON.trash + '</button>' +
+    '</div>';
+  const chk = row.querySelector("input");
+  chk.addEventListener("change", () => toggleTask(pkg, t, chk));
+  row.querySelector('[data-act="rename"]').addEventListener("click", () => startRename(row, pkg, t));
+  row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteTask(pkg, t));
+  return row;
+}
+
+async function toggleTask(pkg, t, chk) {
+  const want = chk.checked;
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/toggle", {
+      method: "POST", body: JSON.stringify({ id: t.id, enabled: want })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "切换失败");
+    t.enabled = want;
+  } catch (e) {
+    chk.checked = !want;
+    toast("任务启停失败：" + e.message, "err");
+  }
+}
+
+function startRename(row, pkg, t) {
+  if (row.classList.contains("editing")) return;
+  row.classList.add("editing");
+  const nm = row.querySelector(".task-name");
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.value = t.name || "";
+  input.maxLength = 40;
+  nm.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = async (save) => {
+    if (done) return;
+    done = true;
+    if (!save) { row.classList.remove("editing"); input.replaceWith(nm); return; }
+    const name = input.value.trim();
+    if (!name) { row.classList.remove("editing"); input.replaceWith(nm); toast("任务名不能为空", "err"); return; }
+    input.disabled = true;
+    try {
+      const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/rename", {
+        method: "POST", body: JSON.stringify({ id: t.id, name })
+      }, 8000);
+      if (r && r.ok === false) throw new Error(r.message || r.error || "改名失败");
+      t.name = name;
+      nm.textContent = name;
+      input.replaceWith(nm);
+      toast("已改名", "ok");
+    } catch (e) {
+      input.replaceWith(nm);
+      toast("改名失败：" + e.message, "err");
+    }
+    row.classList.remove("editing");
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(true); if (e.key === "Escape") commit(false); });
+  input.addEventListener("blur", () => commit(true));
+}
+
+async function deleteTask(pkg, t) {
+  if (!confirm('确定删除任务“' + (t.name || t.id) + '”？')) return;
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/delete", {
+      method: "POST", body: JSON.stringify({ id: t.id })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "删除失败");
+    toast("已删除", "ok");
+    const row = rowForPkg(pkg);
+    if (row) loadTasks(row, pkg, true);
+  } catch (e) {
+    toast("删除失败：" + e.message, "err");
+  }
+}
+
+function appendAddRow(list, pkg) {
+  const bar = document.createElement("div");
+  bar.className = "add-row";
+  bar.innerHTML = '<button class="btn ghost sm add-btn" type="button">' + ICON.plus + '添加任务</button>';
+  bar.querySelector(".add-btn").addEventListener("click", () => {
+    bar.innerHTML =
+      '<input class="add-input" placeholder="任务名称，如：日常签到" maxlength="40">' +
+      '<button class="btn primary sm ok-btn" type="button">确定</button>' +
+      '<button class="btn ghost sm cancel-btn" type="button">取消</button>';
+    const inp = bar.querySelector(".add-input");
+    const ok = bar.querySelector(".ok-btn");
+    const cancel = bar.querySelector(".cancel-btn");
+    inp.focus();
+    let busy = false;
+    const submit = async () => {
+      if (busy) return;
+      const name = inp.value.trim();
+      if (!name) { toast("请输入任务名称", "err"); return; }
+      busy = true;
+      ok.disabled = true; ok.textContent = "添加中…";
+      try {
+        const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/add", {
+          method: "POST", body: JSON.stringify({ name })
+        }, 8000);
+        if (r && r.ok === false) throw new Error(r.message || r.error || "添加失败");
+        toast("任务已添加", "ok");
+        const row = rowForPkg(pkg);
+        if (row) {
+          if (!row.classList.contains("open")) row.classList.add("open");
+          loadTasks(row, pkg, true);
+        } else {
+          appendAddRow(list, pkg);
+        }
+      } catch (e) {
+        busy = false;
+        ok.disabled = false; ok.textContent = "确定";
+        toast("添加失败：" + e.message, "err");
+      }
+    };
+    ok.addEventListener("click", submit);
+    cancel.addEventListener("click", () => { bar.innerHTML = ""; appendAddRow(list, pkg); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") cancel.click(); });
+  });
+  list.appendChild(bar);
+}
+
+/* 拖拽排序（HTML5 DnD，仅拖拽手柄可拖动） */
+function bindTaskDnD(row, pkg) {
+  const grip = row.querySelector(".grip");
+  grip.addEventListener("mousedown", () => { row.draggable = true; });
+  row.addEventListener("dragstart", (e) => {
+    dragId = row.dataset.id;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", row.dataset.id); } catch (err) {}
+    row.classList.add("dragging");
+  });
+  row.addEventListener("dragend", () => {
+    row.draggable = false;
+    row.classList.remove("dragging", "drag-over");
+    dragId = null;
+  });
+  row.addEventListener("dragover", (e) => {
+    if (dragId && dragId !== row.dataset.id) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; row.classList.add("drag-over"); }
+  });
+  row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+  const list = row.parentElement;
+  list.addEventListener("dragover", (e) => { if (dragId) e.preventDefault(); });
+  list.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const id = dragId; dragId = null;
+    if (!id) return;
+    const src = findTaskRow(list, id);
+    if (!src) return;
+    const overRow = e.target.closest ? e.target.closest(".task-row") : null;
+    if (overRow && overRow !== src) list.insertBefore(src, overRow);
+    else { const bar = list.querySelector(".add-row"); if (bar) list.insertBefore(src, bar); }
+    commitOrder(list, pkg);
+  });
+}
+
+function findTaskRow(list, id) {
+  let out = null;
+  list.querySelectorAll(".task-row").forEach((r) => { if (r.dataset.id === id) out = r; });
+  return out;
+}
+
+async function commitOrder(list, pkg) {
+  const ids = [];
+  list.querySelectorAll(".task-row").forEach((r) => ids.push(r.dataset.id));
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/order", {
+      method: "POST", body: JSON.stringify({ ids })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "排序保存失败");
+    toast("任务顺序已保存", "ok");
+    const cur = appState.tasks[pkg] || [];
+    appState.tasks[pkg] = ids.map((id) => cur.find((t) => String(t.id) === id)).filter(Boolean);
+  } catch (e) {
+    toast("排序失败：" + e.message, "err");
+    const row = rowForPkg(pkg);
+    if (row) loadTasks(row, pkg, true);
+  }
+}
+
+/* ================= 扫描设备应用 ================= */
+async function scanDeviceApps() {
+  const btn = $("btnScanApps");
+  btn.disabled = true; btn.textContent = "扫描中…";
+  try {
+    const r = await api("/api/scan_device_apps", {}, 30000);
+    if (!r || r.ok === false) throw new Error((r && r.error) || "扫描失败");
+    if (!r.apps || !r.apps.length) { toast("未扫描到第三方应用（请确认 MuMu 已启动）", "err"); return; }
+    showScanModal(r.apps);
+  } catch (e) {
+    toast("扫描失败：" + e.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "扫描设备应用";
+  }
+}
+async function showScanModal(apps) {
+  const existing = new Set();
+  try {
+    const cfg = await api("/api/overview", {}, 8000);
+    (cfg.apps || []).forEach((a) => existing.add(a.pkg));
+  } catch (e) {}
+  const m = document.createElement("div");
+  m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:300;display:flex;align-items:center;justify-content:center";
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--card);border-radius:14px;max-width:520px;width:90%;max-height:70vh;overflow-y:auto;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.15)";
+  let html = '<h3 style="margin:0 0 12px;font-size:16px">扫描到 ' + apps.length + ' 个应用</h3>';
+  html += '<div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">勾选要添加到自动化目录的应用（已添加的标记为灰色）</div>';
+  html += '<input type="text" id="scanSearch" placeholder="搜索应用名或包名…" style="width:100%;padding:6px 10px;border:1.5px solid var(--line-2);border-radius:8px;font:inherit;font-size:12.5px;margin-bottom:10px;outline:none">';
+  html += '<div id="scanList">';
+  apps.forEach((a) => {
+    const has = existing.has(a.pkg);
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:' + (has ? "default" : "pointer") + ';background:' + (has ? "rgba(44,47,42,0.04)" : "transparent") + '" class="scan-item" data-pkg="' + esc(a.pkg) + '">';
+    html += '<img src="/api/app_icon/' + encodeURIComponent(a.pkg) + '" style="width:32px;height:32px;border-radius:7px;flex:none" onerror="this.style.display=\'none\'">';
+    html += '<input type="checkbox"' + (has ? " disabled" : "") + ' data-pkg="' + esc(a.pkg) + '" data-name="' + esc(a.name) + '">';
+    html += '<div style="flex:1"><div style="font-size:13.5px;font-weight:' + (has ? "400" : "500") + ';color:' + (has ? "var(--ink-3)" : "var(--ink)") + '">' + esc(a.name) + (a.category === "game" ? ' <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(94,139,110,0.14);color:#5E8B6E;margin-left:4px">游戏</span>' : "") + (has ? ' <span style="font-size:11px;color:var(--ok)">✓ 已添加</span>' : "") + '</div>';
+    html += '<div style="font-size:11.5px;color:var(--ink-3);font-family:var(--mono)">' + esc(a.pkg) + (a.version ? ' · v' + esc(a.version) : "") + '</div></div></label>';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;gap:10px;margin-top:16px"><button class="btn primary" id="scanAddBtn" type="button">添加选中</button><button class="btn ghost" id="scanCloseBtn" type="button">取消</button></div>';
+  card.innerHTML = html; m.appendChild(card); document.body.appendChild(m);
+  /* 搜索过滤 */
+  const search = $("scanSearch");
+  if (search) {
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      card.querySelectorAll(".scan-item").forEach((item) => {
+        const txt = (item.textContent || "").toLowerCase();
+        item.style.display = (!q || txt.indexOf(q) >= 0) ? "" : "none";
+      });
+    });
+  }
+  $("scanCloseBtn").onclick = () => m.remove();
+  m.addEventListener("click", (e) => { if (e.target === m) m.remove(); });
+  $("scanAddBtn").onclick = async () => {
+    const checked = card.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) { toast("请至少选择一个应用", "err"); return; }
+    let ok = 0, fail = 0;
+    for (const cb of checked) {
+      try {
+        const r = await api("/api/pipeline/apps", { method: "POST", body: JSON.stringify({ pkg: cb.dataset.pkg, name: cb.dataset.name, source: "scan" }) }, 8000);
+        if (r && r.ok !== false) ok++; else fail++;
+      } catch (e) { fail++; }
+    }
+    m.remove();
+    if (ok) { toast("已添加 " + ok + " 个应用", "ok"); refreshApps(true); }
+    if (fail) toast(fail + " 个添加失败", "err");
+  };
+}
+$("btnScanApps").addEventListener("click", scanDeviceApps);
+
+/* ================= 初始化 ================= */
+applyAnimPref();
+
+/* URL 参数 ?expand=1：自动展开第一个 app 的任务列表（便于预览/测试） */
+(function autoExpandForTest() {
+  if (new URLSearchParams(location.search).get("expand") !== "1") return;
+  const timer = setInterval(() => {
+    const row = document.querySelector(".app-row");
+    if (!row) return;
+    clearInterval(timer);
+    row.classList.add("open");
+    loadTasks(row, row.dataset.pkg);
+  }, 300);
+})();
+
+document.querySelectorAll(".tab").forEach((t) => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+    t.classList.add("on");
+    curTab = t.dataset.tab;
+    logState.lastKey = "";   /* 切 tab 强制重渲染 */
+    renderLog(logState.raw);
+    refresh();
+  });
+});
+
+$("btnStart").addEventListener("click", () => pipelineAction("start"));
+$("btnStop").addEventListener("click", () => pipelineAction("stop"));
+$("btnRefreshStatus").addEventListener("click", () => {
+  refresh(); refreshFailures(); refreshApps(true);
+  toast("已刷新状态", "ok");
+});
+$("logFilterQ").addEventListener("input", (e) => {
+  logFilter.q = e.target.value || "";
+  logState.lastKey = "";
+  renderLog(logState.raw);
+});
+$("logFilterErr").addEventListener("change", (e) => {
+  logFilter.errOnly = !!e.target.checked;
+  logState.lastKey = "";
+  renderLog(logState.raw);
+});
+
+$("btnSettings").addEventListener("click", openSettings);
+$("btnCloseSettings").addEventListener("click", closeSettings);
+$("settingsModal").addEventListener("click", (e) => { if (e.target === $("settingsModal")) closeSettings(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+$("chkAnim").addEventListener("change", () => {
+  try { localStorage.setItem("autofw_anim_enabled", $("chkAnim").checked ? "1" : "0"); } catch (e) {}
+  applyAnimPref();
+});
+
+$("btnRefreshMumu").addEventListener("click", refreshOverview);
+$("btnMumuStart").addEventListener("click", () => mumuAction("start"));
+$("btnMumuStop").addEventListener("click", () => mumuAction("stop"));
+$("btnMumuAdb").addEventListener("click", () => mumuAction("adb"));
+
+refresh();
+setInterval(refresh, 3000);
+refreshOverview();
+setInterval(refreshOverview, 5000);
+refreshFailures();
+setInterval(refreshFailures, 5000);
+refreshApps();
+setInterval(() => {
+  /* 编辑/拖拽进行中不自动重绘，避免打断操作 */
+  if (document.querySelector(".editing") || document.querySelector(".add-row .add-input") || dragId) return;
+  refreshApps(true);
+}, 20000);
+</script>
+</body>
+</html>

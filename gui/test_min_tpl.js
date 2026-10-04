@@ -1,0 +1,14 @@
+'use strict';
+const { stripComments, mergeContinuedLines, tokenize, parseProgram } = require('./dsl_parser.js');
+const { buildFlow } = require('./dsl_to_flow.js');
+const code = 'main\nlog "hello"\nend main\n';
+const { lines } = mergeContinuedLines(stripComments(code));
+const lexDiags = [];
+const ast = parseProgram(tokenize(lines, lexDiags));
+ast.diagnostics = (lexDiags.concat(ast.diagnostics || [])).slice(0, 10);
+console.log('diagnostics:', JSON.stringify(ast.diagnostics));
+const flow = buildFlow(ast);
+console.log('stats:', JSON.stringify(flow.stats));
+console.log('nodes:', JSON.stringify(flow.graph.nodes.map(n => ({ type: n.type, name: n.name, config: n.config })), null, 0));
+console.log('edges:', JSON.stringify(flow.graph.edges.map(e => ({ from: e.from, to: e.to, label: e.label }))));
+console.log('subgraphKeys:', JSON.stringify(Object.keys(flow.subgraphs || {})));

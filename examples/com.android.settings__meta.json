@@ -1,0 +1,11 @@
+{
+  "pkg": "com.android.settings",
+  "tasks": [
+    {
+      "id": "main",
+      "name": "示例：打开系统设置",
+      "enabled": true,
+      "order": 0
+    }
+  ]
+}

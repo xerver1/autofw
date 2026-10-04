@@ -1,0 +1,540 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流水线编排 · autofw</title>
+<style>
+  /* Glassmorphism Design System - token 同控制台 */
+  :root {
+    --bg-deep:#F3F1EB; --glass-card:#FCFBF8; --glass-strong:#FFFFFF;
+    --glass-input:#FFFFFF; --glass-btn:rgba(44,47,42,0.06); --glass-hover:rgba(44,47,42,0.10);
+    --border-glass:rgba(44,47,42,0.09); --border-bright:rgba(44,47,42,0.20);
+    --gold:#75846C; --gold-text:#5E6B55; --moon:#6B7267;
+    --text:#2C2F2A; --text-80:rgba(44,47,42,0.80); --text-50:rgba(44,47,42,0.55); --text-35:rgba(44,47,42,0.35);
+    --ok:#5E8B6E; --err:#BC5F51;
+    --spring:cubic-bezier(0.16,1,0.3,1);
+    --shadow-card:0 2px 4px rgba(44,47,42,0.05), 0 12px 28px rgba(44,47,42,0.06);
+    --shadow-btn:0 2px 4px rgba(44,47,42,0.06), 0 6px 16px rgba(44,47,42,0.08);
+    --shadow-btn-hover:0 4px 8px rgba(44,47,42,0.08), 0 14px 30px rgba(44,47,42,0.12);
+    --shadow-input:inset 0 1px 0 rgba(44,47,42,0.04);
+    --shadow-focus:0 0 0 3px rgba(117,132,108,0.18), 0 8px 24px rgba(44,47,42,0.12);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text); font-size: 14.5px; line-height: 1.6;
+    background:
+      radial-gradient(640px circle at 85% 10%, rgba(124,156,196,0.38), transparent 60%),
+      radial-gradient(560px circle at 10% 90%, rgba(51,81,122,0.45), transparent 60%),
+      radial-gradient(480px circle at 50% 45%, rgba(228,184,99,0.12), transparent 55%),
+      var(--bg-deep);
+    background-attachment: fixed;
+  }
+  /* 噪点层已移除（v3.0.1）：原 feTurbulence 覆盖层在部分浏览器渲染过重导致满屏噪点。
+     如需保留玻璃颗粒质感，可用弱化参数：opacity:0.06 + baseFrequency 0.9 + numOctaves 1 */
+  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 24px 80px; position: relative; z-index: 1; }
+
+  header {
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;
+    background:var(--glass-strong); backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    border:1px solid var(--border-glass); border-radius:20px; box-shadow:var(--shadow-card);
+    padding:18px 24px; margin-bottom:24px;
+  }
+  header h1 { font-size:21px; font-weight:600; }
+  header .sub { color:var(--text-50); font-size:13px; margin-top:4px; }
+  header .links a { color:var(--text-50); font-size:13px; margin-left:14px; text-decoration:none; transition:color 500ms var(--spring); }
+  header .links a:hover { color:var(--gold-text); }
+
+  .toolbar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .toolbar .count { font-size:13px; color:var(--text-50); }
+
+  button {
+    border:1px solid var(--border-glass); border-radius:14px;
+    background:var(--glass-btn); backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    color:var(--text); font-size:13.5px; font-family:inherit; cursor:pointer; padding:8px 22px;
+    box-shadow:var(--shadow-btn); transition:all 500ms var(--spring);
+  }
+  button:hover:not(:disabled) { background:var(--glass-hover); border-color:var(--border-bright); transform:translateY(-2px); box-shadow:var(--shadow-btn-hover); }
+  button:active:not(:disabled) { transform:scale(0.97); }
+  button:focus-visible { outline:none; box-shadow:var(--shadow-focus); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.ghost { background:var(--glass-input); }
+  button.mini { background:var(--glass-input); color:var(--text-80); padding:4px 12px; font-size:12.5px; border-radius:10px; }
+  button.mini:hover { border-color:var(--border-bright); color:var(--text); }
+
+  /* App 行 - 玻璃卡片 */
+  .approw {
+    background:var(--glass-card); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--border-glass); border-radius:18px; box-shadow:var(--shadow-card);
+    background-image:linear-gradient(to bottom, rgba(255,255,255,0.05), transparent 50%);
+    margin-bottom:10px; overflow:hidden; transition:all 500ms var(--spring);
+  }
+  .approw:hover { border-color:rgba(255,255,255,0.25); }
+  .apphead { display:flex; align-items:center; gap:14px; padding:14px 18px; cursor:pointer; }
+  .apphead:hover { background:rgba(255,255,255,0.05); }
+  .apphead.dragging { opacity:.5; border-style:dashed; }
+  .order { font-size:20px; font-weight:300; color:var(--text-35); width:26px; text-align:center; font-variant-numeric:tabular-nums; }
+  .appname { font-weight:600; flex:1; min-width:0; }
+  .appname .pkg { font-size:12px; color:var(--text-50); font-weight:400; font-family:Consolas,monospace; }
+  .tag { font-size:11.5px; padding:1px 8px; border-radius:999px; }
+  .tag.on { background:rgba(127,209,168,0.12); color:var(--ok); }
+  .tag.off { background:rgba(255,255,255,0.08); color:var(--text-50); }
+  .ctrl { display:flex; gap:4px; align-items:center; }
+  .caret { color:var(--text-35); font-size:12px; width:14px; text-align:center; }
+
+  .steps { border-top:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.03); padding:8px 18px 20px; }
+  .step { display:flex; align-items:center; gap:12px; padding:8px 4px; border-bottom:1px dashed rgba(255,255,255,0.12); font-size:13.5px; flex-wrap:wrap; }
+  .step .no { width:24px; color:var(--text-35); font-variant-numeric:tabular-nums; font-size:12.5px; }
+  .step .nm { font-weight:600; min-width:110px; }
+  .step .ac { color:var(--text-50); font-family:Consolas,monospace; font-size:12.5px; flex:1; min-width:90px; }
+  .step .thumb { width:44px; height:34px; border:1px solid var(--border-glass); border-radius:8px; object-fit:contain; background:rgba(3,7,18,0.4); flex:none; }
+  .step .pa { color:var(--text-35); font-size:12.5px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .step .x { color:var(--err); cursor:pointer; font-size:15px; padding:0 6px; opacity:.7; transition:opacity 500ms var(--spring); }
+  .step .x:hover { opacity:1; }
+  .step .ins { cursor:pointer; color:var(--gold); font-size:12px; padding:0 4px; transition:color 500ms var(--spring); }
+  .step .ins:hover { color:var(--gold-text); }
+  .step .thumb { cursor:zoom-in; }
+  .step .tgl { cursor:pointer; font-size:10.5px; padding:2px 7px; border-radius:999px; background:rgba(127,209,168,0.14); color:var(--ok); transition:all 300ms var(--spring); }
+  .step .tgl.off { background:rgba(255,255,255,0.07); color:var(--text-50); }
+  .step .tgl:hover { filter:brightness(1.3); }
+  .step .nt { color:var(--text-50); font-size:11.5px; max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-left:1px solid rgba(255,255,255,0.14); padding-left:8px; }
+  .stepform { margin-top:14px; border:1px solid var(--border-glass); border-radius:14px; background:var(--glass-input); backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%); padding:14px 16px; }
+  .stepform h4 { font-size:13px; margin-bottom:10px; color:var(--text-50); font-weight:600; }
+  .stepform .row { display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .stepform input, .stepform select {
+    border:1px solid var(--border-glass); border-radius:12px; padding:8px 12px; font-size:13.5px;
+    font-family:inherit; color:var(--text); background:var(--glass-input);
+    box-shadow:var(--shadow-input); transition:all 500ms var(--spring);
+  }
+  .stepform input.wide { flex:1; min-width:200px; }
+  .stepform input::placeholder { color:var(--text-35); }
+  .stepform input:focus, .stepform select:focus { outline:none; border-color:var(--border-bright); box-shadow:var(--shadow-focus); }
+  .stepform .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .stepform .hint { font-size:12px; color:var(--text-35); }
+
+  .modal { position:fixed; inset:0; background:rgba(3,7,18,0.6); backdrop-filter:blur(20px); display:none; align-items:center; justify-content:center; z-index:50; }
+  .modal.show { display:flex; }
+  .modal .box {
+    background:var(--glass-strong); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--border-glass); border-radius:20px; box-shadow:var(--shadow-card);
+    width:520px; max-width:92vw; max-height:80vh; overflow-y:auto; padding:26px;
+  }
+  .modal h3 { font-size:16px; margin-bottom:16px; }
+  .cand { display:flex; justify-content:space-between; align-items:center; padding:10px 4px; border-bottom:1px solid rgba(255,255,255,0.1); }
+  .cand:last-child { border-bottom:none; }
+  .cand .nm { font-weight:600; }
+  .cand .pk { font-size:12px; color:var(--text-50); font-family:Consolas,monospace; }
+  .cand .add { background:var(--glass-input); border:1px solid var(--border-glass); border-radius:10px; padding:4px 14px; cursor:pointer; font-size:12.5px; color:var(--text-80); transition:all 500ms var(--spring); }
+  .cand .add:hover { border-color:var(--border-bright); color:var(--gold-text); }
+  .cand .done { color:var(--text-35); font-size:12px; }
+
+  .empty { text-align:center; color:var(--text-35); padding:48px 0; font-size:14px; }
+  .err { color:var(--err); font-size:13px; margin-top:10px; }
+  /* Lightbox 悬浮窗（大图查看） */
+  #lightbox { position:fixed; inset:0; background:rgba(3,7,18,0.82); backdrop-filter:blur(12px); display:none; align-items:center; justify-content:center; z-index:200; }
+  #lightbox.show { display:flex; }
+  #lightbox .frame { position:relative; max-width:92vw; max-height:88vh; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #lightbox img { max-width:92vw; max-height:76vh; object-fit:contain; border:1px solid var(--border-glass); border-radius:14px; background:rgba(6,10,19,0.6); transition:transform 200ms var(--spring); }
+  #lightbox .bar { display:flex; gap:10px; align-items:center; }
+  #lightbox .bar button { padding:5px 14px; font-size:12.5px; border-radius:10px; }
+  #lightbox .lberr { color:var(--err); font-size:13px; display:none; }
+  #toast { position:fixed; top:18px; right:18px; max-width:340px; z-index:100; display:none; }
+  #toast .t {
+    background:var(--glass-strong); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--border-glass); border-left:3px solid var(--gold);
+    border-radius:14px; padding:10px 14px; margin-bottom:8px; font-size:13.5px; box-shadow:var(--shadow-card);
+  }
+  #toast .t.err { border-left-color:var(--err); }
+  #toast .t.ok { border-left-color:var(--ok); }
+  footer { margin-top:40px; border-top:1px solid rgba(255,255,255,0.12); padding-top:14px; font-size:12px; color:var(--text-50); display:flex; justify-content:space-between; }
+
+  /* 内嵌视图提示条（iframe 内打开时显示，不破坏布局） */
+  #embedHint { display:none; text-align:center; font-size:12px; padding:6px 12px; color:var(--gold-text); background:linear-gradient(180deg, rgba(228,184,99,0.12), rgba(228,184,99,0.03)); border-bottom:1px solid var(--border-glass); letter-spacing:0.5px; }
+  /* 全局动画关闭：与 index.html 共用 localStorage("autofw_anim_enabled") */
+  body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !important; transition:none !important; }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+  @media (max-width: 640px) { .wrap { padding: 20px 14px 60px; } header { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body>
+<div id="embedHint">当前为内嵌视图，完整功能请打开独立页面</div>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>流水线编排</h1>
+    <div class="sub">查看已配置自动化的 App · 编排执行顺序 · 展开管理自动化步骤</div>
+  </div>
+  <div class="links">
+    <a href="/" target="_blank" rel="noopener">控制面板</a>
+    <a href="/step_editor.html" target="_blank" rel="noopener">步骤录入</a>
+  </div>
+</header>
+
+<div class="toolbar">
+  <span class="count" id="count"></span>
+  <button id="btnAdd">+ 添加新 App 自动化</button>
+</div>
+
+<div id="list"></div>
+<div class="empty" id="empty" style="display:none">暂无已配置自动化的 App —— 点击右上角「+ 添加新 App 自动化」开始</div>
+
+<div id="toast"></div>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h3>添加新 App 自动化</h3>
+    <div id="candList"></div>
+    <div class="err" id="candErr"></div>
+    <div style="margin-top:16px;text-align:right"><button class="ghost" id="btnCloseModal">关闭</button></div>
+  </div>
+</div>
+
+<footer><span>autofw · 流水线编排</span><span id="footInfo"></span></footer>
+</div>
+
+<div id="lightbox">
+  <div class="frame">
+    <img id="lbImg" alt="大图预览">
+    <div class="lberr" id="lbErr"></div>
+    <div class="bar">
+      <button id="lbZoomOut">−</button>
+      <button id="lbZoomIn">+</button>
+      <button id="lbClose">关闭 (Esc)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let apps = [], candidates = [], expanded = new Set(), dragFrom = null;
+
+/* ---- 内嵌视图提示（iframe 内打开时显示细提示条，不破坏布局） ---- */
+if (window.self !== window.top) {
+  const h = $("embedHint");
+  if (h) h.style.display = "block";
+}
+/* ---- 动画关闭开关（与 index.html 共用 localStorage key "autofw_anim_enabled"） ---- */
+try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.body.classList.add("no-anim"); } catch (e) { /* 忽略 */ }
+
+function toast(msg, kind = "") {
+  const t = document.createElement("div");
+  t.className = "t " + kind;
+  t.textContent = msg;
+  $("toast").appendChild(t);
+  $("toast").style.display = "block";
+  setTimeout(() => { t.remove(); if (!$("toast").children.length) $("toast").style.display = "none"; }, 4000);
+}
+
+async function api(path, method = "GET", body) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+/* ---- 加载 ---- */
+async function load() {
+  try {
+    const d = await api("/api/pipeline");
+    apps = d.apps || [];
+    candidates = d.candidates || [];
+    render();
+    $("count").textContent = "共 " + apps.length + " 个 App 自动化" + (d.updated_at ? " · 最近保存 " + d.updated_at : "");
+    $("footInfo").textContent = "候选 " + candidates.length + " 个";
+  } catch (e) {
+    $("empty").style.display = "block";
+    $("empty").textContent = "加载失败：" + e.message + " —— 请确认面板服务已启动";
+    toast("加载失败：" + e.message, "err");
+  }
+}
+
+/* ---- 渲染 ---- */
+function render() {
+  const list = $("list");
+  list.innerHTML = "";
+  if (!apps.length) { $("empty").style.display = "block"; return; }
+  $("empty").style.display = "none";
+  apps.forEach((a, i) => {
+    const row = document.createElement("div");
+    row.className = "approw";
+    row.dataset.pkg = a.pkg;
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => { dragFrom = i; row.classList.add("dragging"); });
+    row.addEventListener("dragend", () => { row.classList.remove("dragging"); dragFrom = null; });
+    row.addEventListener("dragover", (e) => e.preventDefault());
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (dragFrom !== null && dragFrom !== i) {
+        const arr = apps.map((x) => x.pkg);
+        const [moved] = arr.splice(dragFrom, 1);
+        arr.splice(i, 0, moved);
+        saveOrder(arr);
+      }
+    });
+    const head = document.createElement("div");
+    head.className = "apphead";
+    head.innerHTML =
+      '<span class="caret">' + (expanded.has(a.pkg) ? "▾" : "▸") + '</span>' +
+      '<span class="order">' + a.order + '</span>' +
+      '<span class="appname">' + esc(a.name) + '<div class="pkg">' + esc(a.pkg) + '</div></span>' +
+      '<span class="tag ' + (a.enabled ? "on" : "off") + '">' + (a.enabled ? "启用" : "停用") + '</span>' +
+      '<span class="ctrl">' +
+        '<a class="mini" style="text-decoration:none;display:inline-block" href="/flow_editor.html?pkg=' + encodeURIComponent(a.pkg) + '" target="_blank" rel="noopener" title="打开图形化工作流编辑器（新标签）">图形化</a>' +
+        '<button class="mini" data-act="up" ' + (i === 0 ? "disabled" : "") + '>↑</button>' +
+        '<button class="mini" data-act="down" ' + (i === apps.length - 1 ? "disabled" : "") + '>↓</button>' +
+        '<button class="mini" data-act="del">删除</button>' +
+      '</span>';
+    head.addEventListener("click", (e) => {
+      const act = e.target.dataset.act;
+      if (act === "up") { move(i, -1); return; }
+      if (act === "down") { move(i, 1); return; }
+      if (act === "del") { delApp(a); return; }
+      toggle(a.pkg);
+    });
+    row.appendChild(head);
+    if (expanded.has(a.pkg)) {
+      row.appendChild(buildSteps(a));
+    }
+    list.appendChild(row);
+  });
+}
+
+function buildSteps(a) {
+  const box = document.createElement("div");
+  box.className = "steps";
+  if (!a.steps.length) {
+    box.innerHTML = '<div style="color:var(--text-35);padding:10px 4px;font-size:13px">该 App 暂无步骤</div>';
+  }
+  a.steps.forEach((s, i) => {
+    const d = document.createElement("div");
+    d.className = "step";
+    const hasImg = s.image && /^[\w.-]+\.png$/i.test(s.image);
+    const thumb = hasImg
+      ? '<img class="thumb" src="/api/templates/' + encodeURIComponent(a.pkg) + '/' + encodeURIComponent(s.image) + '" title="点击查看大图: ' + esc(s.image) + '" alt="" data-lb="1">'
+      : '';
+    d.innerHTML =
+      '<span class="no">' + (i + 1) + '</span>' +
+      '<span class="tgl' + (s.enable === false ? ' off' : '') + '" title="' + (s.enable === false ? '已停用，点击启用' : '已启用，点击停用') + '">' + (s.enable === false ? '停' : '启') + '</span>' +
+      '<span class="nm">' + esc(s.name) + '</span>' +
+      '<span class="ac">' + esc(s.action || "-") + '</span>' +
+      (s.type ? '<span class="tag t">' + esc(s.type) + '</span>' : '') +
+      thumb +
+      '<span class="pa" title="' + esc(s.params || "") + '">' + esc(s.params || "") + '</span>' +
+      (s.note ? '<span class="nt" title="备注">' + esc(s.note) + '</span>' : '') +
+      '<span class="ins" title="在此步骤后插入">插入到此</span>' +
+      '<span class="x" title="删除此步骤">×</span>';
+    d.querySelector(".ins").addEventListener("click", () => showStepForm(a.pkg, i + 1));
+    d.querySelector(".x").addEventListener("click", () => delStep(a.pkg, i, s.name));
+    d.querySelector(".tgl").addEventListener("click", async () => {
+      const r = await api("/api/pipeline/apps/" + a.pkg + "/steps/" + i + "/toggle", "POST");
+      toast(r.msg, r.ok ? "ok" : "err");
+      load();
+    });
+    if (hasImg) d.querySelector(".thumb").addEventListener("click", () => openLightbox(a.pkg, s.image));
+    box.appendChild(d);
+  });
+  // 表单
+  const form = document.createElement("div");
+  form.className = "stepform";
+  form.innerHTML =
+    '<h4>添加 / 插入步骤</h4>' +
+    '<div class="row">' +
+      '<input class="wide" id="sf_name" placeholder="步骤名称（必填，如：点击进入游戏）">' +
+      '<select id="sf_type" title="步骤类型（软件自动化）">' +
+        '<option value="">类型：普通</option>' +
+        '<option value="app_launch">类型：启动应用</option>' +
+        '<option value="window_switch">类型：切换窗口</option>' +
+        '<option value="condition_wait">类型：条件等待</option>' +
+        '<option value="retry">类型：失败重试</option>' +
+        '<option value="timeout">类型：超时控制</option>' +
+        '<option value="click">类型：点击</option>' +
+        '<option value="ocr_check">类型：OCR 校验</option>' +
+        '<option value="swipe">类型：滑动</option>' +
+        '<option value="key">类型：按键</option>' +
+      '</select>' +
+    '</div>' +
+    '<div class="row">' +
+      '<input id="sf_action" placeholder="执行动作（如 task:enter_game / adb_tap）">' +
+      '<input class="wide" id="sf_params" placeholder="参数（如 坐标 960,1008 / 等待条件）">' +
+    '</div>' +
+    '<div class="row">' +
+      '<input class="wide" id="sf_note" placeholder="备注（可选，如：仅周三执行 / 需先手动登录）">' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-70)"><input type="checkbox" id="sf_enable" checked> 启用</label>' +
+    '</div>' +
+    '<div class="row">' +
+      '<select id="sf_image" title="匹配图像（可选）"><option value="">匹配图像：无</option></select>' +
+      '<input type="file" id="sf_upload" accept="image/png,image/jpeg" style="display:none">' +
+      '<button class="mini" id="btnUpload">上传图片作为模板</button>' +
+    '</div>' +
+    '<div class="actions">' +
+      '<button class="mini" data-pos="head">在开头插入</button>' +
+      '<button class="mini" data-pos="tail">追加到末尾</button>' +
+      '<span class="hint">也可点击步骤行右侧「插入到此」在指定位置插入</span>' +
+    '</div>';
+  // 上传图片 → 保存为该 App 模板 → 刷新下拉
+  form.querySelector("#btnUpload").addEventListener("click", () => form.querySelector("#sf_upload").click());
+  form.querySelector("#sf_upload").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!/^image\/(png|jpeg)$/.test(f.type)) { toast("仅支持 PNG/JPEG", "err"); return; }
+    const rd = new FileReader();
+    rd.onload = async () => {
+      const b64 = rd.result.split(",")[1];
+      const r = await api("/api/templates/" + encodeURIComponent(a.pkg) + "/upload", "POST",
+                           { name: f.name, image_b64: b64 });
+      if (r.ok) {
+        toast(r.msg, "ok");
+        const sel = form.querySelector("#sf_image");
+        const o = document.createElement("option");
+        o.value = r.name; o.textContent = "匹配图像：" + r.name;
+        sel.appendChild(o); sel.value = r.name;
+      } else toast(r.error, "err");
+    };
+    rd.readAsDataURL(f);
+    e.target.value = "";
+  });
+  fetch("/api/templates/" + encodeURIComponent(a.pkg))
+    .then((r) => r.json())
+    .then((d) => {
+      const sel = form.querySelector("#sf_image");
+      (d.templates || []).forEach((t) => {
+        const o = document.createElement("option");
+        o.value = t; o.textContent = "匹配图像：" + t;
+        sel.appendChild(o);
+      });
+    }).catch(() => {});
+  form.querySelector('[data-pos="head"]').addEventListener("click", () => addStep(a.pkg, "head"));
+  form.querySelector('[data-pos="tail"]').addEventListener("click", () => addStep(a.pkg, "tail"));
+  form.dataset.insertAt = "";
+  box.appendChild(form);
+  return box;
+}
+
+function showStepForm(pkg, at) {
+  const row = document.querySelector('.approw[data-pkg="' + pkg + '"]');
+  if (!row) return;
+  const form = row.querySelector(".stepform");
+  if (!form) return;
+  form.dataset.insertAt = at;
+  form.scrollIntoView({ behavior: "smooth", block: "center" });
+  form.querySelector("#sf_name").focus();
+  toast("将插入到第 " + at + " 位之后 —— 填写表单后提交");
+}
+
+async function addStep(pkg, pos) {
+  const row = document.querySelector('.approw[data-pkg="' + pkg + '"]');
+  const form = row.querySelector(".stepform");
+  const name = form.querySelector("#sf_name").value.trim();
+  const action = form.querySelector("#sf_action").value.trim();
+  const params = form.querySelector("#sf_params").value.trim();
+  const image = form.querySelector("#sf_image").value.trim();
+  const stype = form.querySelector("#sf_type").value;
+  const note = form.querySelector("#sf_note").value.trim();
+  const enable = form.querySelector("#sf_enable").checked;
+  if (!name) { toast("步骤名称不能为空", "err"); return; }
+  let position = "end";
+  if (pos === "head") position = 0;
+  else if (form.dataset.insertAt && form.dataset.insertAt !== "") position = Number(form.dataset.insertAt) || "end";
+  const r = await api("/api/pipeline/apps/" + pkg + "/steps", "POST", { name, action, params, image, type: stype, note, enable, position });
+  if (r.ok) { toast(r.msg, "ok"); form.querySelector("#sf_name").value = ""; form.querySelector("#sf_action").value = ""; form.querySelector("#sf_params").value = ""; form.querySelector("#sf_note").value = ""; form.querySelector("#sf_image").value = ""; form.querySelector("#sf_type").value = ""; form.querySelector("#sf_enable").checked = true; form.dataset.insertAt = ""; load(); }
+  else toast(r.error, "err");
+}
+
+async function delStep(pkg, idx, name) {
+  if (!confirm("确认删除步骤「" + name + "」？")) return;
+  const r = await api("/api/pipeline/apps/" + pkg + "/steps/" + idx, "DELETE");
+  if (r.ok) { toast(r.msg, "ok"); load(); } else toast(r.error, "err");
+}
+
+function toggle(pkg) {
+  if (expanded.has(pkg)) expanded.delete(pkg); else expanded.add(pkg);
+  render();
+}
+
+async function move(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= apps.length) return;
+  const arr = apps.map((x) => x.pkg);
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  await saveOrder(arr);
+}
+
+async function saveOrder(order) {
+  const r = await api("/api/pipeline/order", "POST", { apps: order });
+  if (r.ok) { toast(r.msg, "ok"); load(); }
+  else toast(r.error, "err");
+}
+
+async function delApp(a) {
+  if (!confirm("确认删除「" + a.name + " (" + a.pkg + ")」及其步骤？")) return;
+  const r = await api("/api/pipeline/apps/" + a.pkg, "DELETE");
+  if (r.ok) { toast(r.msg, "ok"); expanded.delete(a.pkg); load(); }
+  else toast(r.error, "err");
+}
+
+/* ---- 添加弹窗 ---- */
+$("btnAdd").addEventListener("click", openModal);
+$("btnCloseModal").addEventListener("click", () => $("modal").classList.remove("show"));
+
+function openModal() {
+  const added = new Set(apps.map((a) => a.pkg));
+  const list = $("candList");
+  list.innerHTML = "";
+  const cands = candidates.filter((c) => !added.has(c.pkg));
+  if (!cands.length) {
+    list.innerHTML = '<div style="color:var(--text-35);padding:16px 0">没有可添加的候选 App（都已加入流水线）</div>';
+  }
+  cands.forEach((c) => {
+    const d = document.createElement("div");
+    d.className = "cand";
+    d.innerHTML = '<div><div class="nm">' + esc(c.name) + '</div><div class="pk">' + esc(c.pkg) + '</div></div>' +
+      '<button class="add">添加</button>';
+    d.querySelector(".add").addEventListener("click", async () => {
+      const r = await api("/api/pipeline/apps", "POST", { pkg: c.pkg });
+      if (r.ok) { toast(r.msg, "ok"); load(); openModal(); }
+      else toast(r.error, "err");
+    });
+    list.appendChild(d);
+  });
+  $("modal").classList.add("show");
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ---- Lightbox 大图查看 ---- */
+let lbScale = 1;
+function openLightbox(pkg, image) {
+  lbScale = 1;
+  const img = $("lbImg");
+  img.style.transform = "scale(1)";
+  img.src = "/api/templates/" + encodeURIComponent(pkg) + "/" + encodeURIComponent(image);
+  img.onerror = () => { $("lbErr").style.display = "block"; $("lbErr").textContent = "图片加载失败：" + image + "（文件可能已被删除）"; };
+  img.onload = () => { $("lbErr").style.display = "none"; };
+  $("lightbox").classList.add("show");
+}
+function closeLightbox() { $("lightbox").classList.remove("show"); }
+function zoomLightbox(d) {
+  lbScale = Math.min(4, Math.max(0.5, lbScale + d));
+  $("lbImg").style.transform = "scale(" + lbScale + ")";
+}
+$("lbClose").addEventListener("click", closeLightbox);
+$("lbZoomIn").addEventListener("click", () => zoomLightbox(0.5));
+$("lbZoomOut").addEventListener("click", () => zoomLightbox(-0.5));
+$("lightbox").addEventListener("click", (e) => { if (e.target === $("lightbox")) closeLightbox(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLightbox(); });
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

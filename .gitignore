@@ -1,0 +1,23 @@
+# ---- 运行环境（体积大、可重建）----
+.venv/
+__pycache__/
+*.pyc
+
+# ---- 运行数据（生产数据与日志不入库；目录骨架由首次启动自动创建）----
+state/
+logs/
+diag_out/
+
+# ---- 识别模板截图（游戏素材有版权，且体积大）----
+adapters/templates/
+
+# ---- 本地改动备份（遵循项目备份纪律：.bak-YYYYMMDD<后缀>）----
+*.bak
+*.bak-*
+*.orig
+
+# ---- 编辑器 / 系统杂物 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

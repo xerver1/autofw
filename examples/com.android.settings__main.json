@@ -1,0 +1,107 @@
+{
+  "pkg": "com.android.settings",
+  "name": "示例：打开系统设置",
+  "version": 1,
+  "updated": "2026-10-04 12:00:00",
+  "graph": {
+    "nodes": [
+      {
+        "id": "n_demo_start",
+        "type": "start",
+        "name": "开始",
+        "pos": { "x": 120, "y": 160 },
+        "config": {}
+      },
+      {
+        "id": "n_demo_amstart",
+        "type": "action",
+        "name": "打开设置 App",
+        "pos": { "x": 360, "y": 150 },
+        "config": { "action": "am_start" }
+      },
+      {
+        "id": "n_demo_wait1",
+        "type": "action",
+        "name": "等待 2 秒",
+        "pos": { "x": 620, "y": 150 },
+        "config": { "action": "wait 2000" }
+      },
+      {
+        "id": "n_demo_print1",
+        "type": "print",
+        "name": "打印",
+        "pos": { "x": 880, "y": 150 },
+        "config": { "text": "设置已打开，示例流程运行中" }
+      },
+      {
+        "id": "n_demo_loop",
+        "type": "loop_for",
+        "name": "循环 3 次",
+        "pos": { "x": 1130, "y": 150 },
+        "config": { "count": 3, "delay_ms": 500 }
+      },
+      {
+        "id": "n_demo_key",
+        "type": "action",
+        "name": "按返回键",
+        "pos": { "x": 1390, "y": 150 },
+        "config": { "action": "key back" }
+      },
+      {
+        "id": "n_demo_end",
+        "type": "end",
+        "name": "结束",
+        "pos": { "x": 1640, "y": 150 },
+        "config": {}
+      }
+    ],
+    "edges": [
+      { "id": "e_demo_1", "from": "n_demo_start", "to": "n_demo_amstart", "label": "" },
+      { "id": "e_demo_2", "from": "n_demo_amstart", "to": "n_demo_wait1", "label": "" },
+      { "id": "e_demo_3", "from": "n_demo_wait1", "to": "n_demo_print1", "label": "" },
+      { "id": "e_demo_4", "from": "n_demo_print1", "to": "n_demo_loop", "label": "" },
+      { "id": "e_demo_5", "from": "n_demo_loop", "to": "n_demo_key", "label": "" },
+      { "id": "e_demo_9", "from": "n_demo_key", "to": "n_demo_end", "label": "" }
+    ]
+  },
+  "subgraphs": {
+    "n_demo_loop": {
+      "nodes": [
+        {
+          "id": "n_demo_sub_start",
+          "type": "start",
+          "name": "开始",
+          "pos": { "x": 120, "y": 140 },
+          "config": {}
+        },
+        {
+          "id": "n_demo_sub_wait",
+          "type": "action",
+          "name": "等待 1 秒",
+          "pos": { "x": 360, "y": 130 },
+          "config": { "action": "wait 1000" }
+        },
+        {
+          "id": "n_demo_sub_print",
+          "type": "print",
+          "name": "打印",
+          "pos": { "x": 620, "y": 130 },
+          "config": { "text": "循环体：每秒打印一次（演示循环节点）" }
+        },
+        {
+          "id": "n_demo_sub_end",
+          "type": "end",
+          "name": "结束",
+          "pos": { "x": 880, "y": 130 },
+          "config": {}
+        }
+      ],
+      "edges": [
+        { "id": "e_demo_s1", "from": "n_demo_sub_start", "to": "n_demo_sub_wait", "label": "" },
+        { "id": "e_demo_s2", "from": "n_demo_sub_wait", "to": "n_demo_sub_print", "label": "" },
+        { "id": "e_demo_s3", "from": "n_demo_sub_print", "to": "n_demo_sub_end", "label": "" }
+      ]
+    }
+  },
+  "versions": []
+}
