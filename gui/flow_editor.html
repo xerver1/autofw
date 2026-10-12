@@ -1142,6 +1142,8 @@ function isWaitAction(act) { return /^wait\s+\d+/.test(act || ""); }
 function getWaitMs(act) { const m = (act || "").match(/^wait\s+(\d+)/); return m ? parseInt(m[1]) : null; }
 /* —— 滑动手势辅助（动作节点 c.action 以 "swipe x1 y1 x2 y2 ms" 形态存储）—— */
 function isSwipeAction(act) { return /^swipe(\s|$)/i.test(act || ""); }
+/* 69 轮：判断选中的动作预设是否滑动（用于下拉选中态的衔接提示） */
+function isSwipePreset(preset) { return !!(preset && /^swipe(\s|$)/i.test(preset.v || "")); }
 /* 2026-09-19：仅「点击类」动作需要截图定位图；启动应用/按键/等待/OCR 等不需要 */
 function isTapAction(act) {
   const a = String(act || "").trim();
@@ -1181,6 +1183,11 @@ function swipePanelHTML(c) {
   const sw = swipePoints(c);
   const dir = swipeDirOf(sw), len = swipeLenOf(sw), ms = sw ? sw.ms : (c.swipe_ms != null ? c.swipe_ms : 400);
   const swSrc = nodeImgSrc(c);   // 三源模型约定：显示端取图一律走 nodeImgSrc，禁止自行拼接字段
+  // 69 轮：面板顶部说明条——与节点库「滑动」节点效果一致 + action 由标注自动管理 + 逃生按钮
+  const noticeHTML = '<div class="fgroup" style="background:rgba(122,111,206,0.08);border:1px solid rgba(122,111,206,0.35);border-radius:9px;padding:8px 10px">' +
+    '<div style="font-size:12px;line-height:1.7;color:var(--ink-1)">本节点的滑动与节点库「滑动」节点<b>效果一致</b>（同为 swipe 手势）。' +
+    '坐标由下方截图标注自动写入执行动作，<b>无需手动修改</b>。</div>' +
+    '<button class="fbtn mini" id="btnSwLeave" style="margin-top:6px" title="清空滑动动作，返回通用动作选择（可改选点击/等待/按键等）">切换为其他动作</button></div>';
   // 只有显式在图上标注过（c.swipe_x1 有值）才画标记，否则 positionSwipeMarkers 不定位、
   // 标记会停在 CSS 默认的 50%/50% 处造成"图中央两个圈"的误导显示
   const marked = c.swipe_x1 != null;
@@ -1189,14 +1196,15 @@ function swipePanelHTML(c) {
     ? ("起点 (" + sw.x1 + ", " + sw.y1 + ") → 终点 (" + sw.x2 + ", " + sw.y2 + ") · 长 " + len + "px · " + ms + "ms"
        + (marked ? "" : "（当前来自动作原语，未在图上标注）"))
     : "未标记（先截图标两点的起点与终点）";
-  let h = '<div class="fgroup"><label>滑动手势（截图标记起点/终点）</label>' +
+  let h = noticeHTML +
+    '<div class="fgroup"><label>滑动手势（截图上标注起点与终点）</label>' +
     '<div class="swipeimg" id="swipeImgBox">' + (swSrc
       ? '<img src="' + esc(swSrc) + '" alt="swipe-img">' + markHTML
       : '<div class="swipeempty">尚未设置截图<br>点击「截取模拟器画面」或「上传截图」<br>然后在图上依次点击「起点」与「终点」</div>') + '</div>' +
     '<div class="swipecoords" id="swipeCoords">' + coordTxt + '</div>' +
-    '<div style="display:flex;gap:6px;margin-top:6px"><button class="fbtn mini" id="btnSwSnap" style="flex:1">截取模拟器画面</button><button class="fbtn mini" id="btnSwUp" style="flex:1">上传截图</button>' +
-    '<button class="fbtn mini" id="btnSwClr" title="恢复默认手势并允许重新标注起点（截图保留）">重置手势</button></div>' +
-    '<div class="hint">在截图上依次点击「起点」→「终点」即定义一条滑动；方向/长度自动识别，下方可微调</div></div>';
+    '<div style="display:flex;gap:6px;margin-top:6px"><button class="fbtn mini" id="btnSwSnap" style="flex:1">截图标注手势</button><button class="fbtn mini" id="btnSwUp" style="flex:1">上传截图</button>' +
+    '<button class="fbtn mini" id="btnSwClr" style="flex:1" title="恢复默认手势并允许重新标注起点（截图保留）">重置手势</button></div>' +
+    '<div class="hint">点「截图标注手势」打开放大截图，依次点击「起点」→「终点」即定义一条滑动；方向/长度自动识别，下方可微调</div></div>';
   h += '<div class="fgroup"><label>滑动方向</label><select id="nSwDir">' +
     '<option value="">— 两点点选（自定义）—</option>' +
     '<option value="up"' + (dir === "up" ? " selected" : "") + '>↑ 向上</option>' +
@@ -1232,6 +1240,7 @@ const QP = new URLSearchParams(location.search);
 const PKG = QP.get("pkg") || "default";
 const TASK = QP.get("task") || null;   // 子任务模式：?pkg=..&task=.. 时按任务读存 flow
 const FOCUS = QP.get("focus") === "1"; // 61 轮：流水线跟随模式 ?focus=1 — 轮询 /api/pipeline/live 自动定位运行节点
+const FOLLOW = QP.get("follow") === "1"; // 71 轮：run-all 跟随模式 ?follow=1 — 轮询 runstatus 定位当前任务运行节点
 const LSKEY = "autofw_flow_" + PKG + (TASK ? "_" + TASK : "");  // 草稿按任务隔离
 
 /* ================= 状态 ================= */
@@ -1294,7 +1303,7 @@ async function loadFlow() {
   S.pkg = d.pkg; S.name = d.name; S.version = d.version;
   S.graph = d.graph || { nodes: [], edges: [] };
   S.subgraphs = d.subgraphs || {};
-  reconcileAllTaps(); // 加载即自愈：双源脱节节点自动对齐，杜绝「上次没改到的节点复发偏移」
+  reconcileAllTaps(); reconcileAllSwipes(); // 加载即自愈：双源脱节节点自动对齐（tap+swipe，2026-10-11）
   S.dirty = false;
   rolesDirty();
   enterCtx(null);
@@ -2457,8 +2466,14 @@ function bezPoint(f, c1, c2, t, u) {
  * 修复旧实现固定用标准 S 曲线控制点计算中点、弓形绕行/旧版直线下圆点脱离线路的问题） */
 function autoEdgeGeom(e, f, t, er) {
   const es2 = THEME.edges[er] || THEME.edges.sys;
-  if (edgeMode() === "legacy") return es2.arc ? legacyArcPath(f, t) : legacyEdgePath(f, t);
-  return es2.arc ? arcPath(f, t, e.from, e.to) : edgePath(f, t, e.from, e.to, e);
+  // 68 轮修复：回边弧线（arc）改由边的【几何语义】决定，不再由连线角色（role）决定。
+  // 旧逻辑 es2.arc（loop 角色即走回边上弓）在子图内误伤前向连线——子图内所有执行链边都是
+  // loop 色，向右的前向边（如 开始→动作→结束）也被画成向上绕的回边弧（用户报的"异常突起"）。
+  // 新判定：真回边 = 终点在起点左侧（t.x < f.x，如 动作→while 回连）才走 arcPath；
+  // 前向/横向边一律走 S 曲线避让（edgePath），loop 色只影响线型配色不影响几何。
+  const isBackEdge = t.x < f.x - 4;   // 4px 容差：近竖向对齐仍按前向处理
+  if (edgeMode() === "legacy") return (es2.arc && isBackEdge) ? legacyArcPath(f, t) : legacyEdgePath(f, t);
+  return (es2.arc && isBackEdge) ? arcPath(f, t, e.from, e.to) : edgePath(f, t, e.from, e.to, e);
 }
 /* 手动走线：二次贝塞尔经过「路径默认中点 + 手动偏移」（控制点 = 2×mid − 端点中点） */
 function manualEdgeGeom(f, t, baseMid, manual) {
@@ -3307,6 +3322,18 @@ function generateCropPreview(img, crop, config) {
 function updateCropInfo(config, container) {
   const info = container.querySelector && container.querySelector(".crop-info");
   if (!info) return;
+  // swipe 模式：信息条/预览标签用滑动手势语义（66c：避免被圈选文案覆写回退）
+  if (typeof _ovCropMode !== "undefined" && _ovCropMode === "swipe") {
+    const sw = (typeof swipePoints === "function" && config.swipe_x1 != null) ? swipePoints(config) : null;
+    info.innerHTML = sw
+      ? ('<span style="color:var(--cond)">起点: (' + sw.x1 + ',' + sw.y1 + ')</span>' +
+         '<span style="color:var(--par);margin-left:10px">终点: (' + sw.x2 + ',' + sw.y2 + ')</span>' +
+         '<span style="margin-left:10px">' + swipeLenOf(sw) + 'px · ' + sw.ms + 'ms</span>')
+      : '<span style="color:var(--ink-3)">在截图上点击两点：起点 → 终点</span>';
+    const pv2 = container.querySelector(".crop-preview");
+    if (pv2) pv2.innerHTML = '<div class="label">手势预览（标注后显示）</div>';
+    return;
+  }
   const rm = config.region_match, tc = config.target_crop;
   let html = "";
   if (rm) html += '<span style="color:var(--cond)">匹配区域: (' + rm.x + ',' + rm.y + ') ' + rm.w + '×' + rm.h + '</span>';
@@ -3380,6 +3407,30 @@ function closeCropOverlay() {
   $("cropOverlay").style.display = "none";
   const row = $("ovModeRow");
   if (row) row.style.display = "flex";   // 恢复圈选模式按钮行（tap 模式曾隐藏）
+  // 66c：swipe 模式改过的头标题/清除按钮文案/信息条/预览标签统一复位，防污染其他模式
+  const head = document.querySelector(".crop-ov-head");
+  if (head) head.childNodes[0].nodeValue = "✂ 截图选区 ";
+  const clr = $("ovBtnClear");
+  if (clr) clr.textContent = "清除圈选";
+  const info = document.getElementById("ovCropInfo");
+  if (info) info.innerHTML = '<span style="color:var(--ink-3)">在截图上拖拽圈选</span>';
+  const prev = document.querySelector("#ovCropPreview .label");
+  if (prev) prev.textContent = "匹配图像预览（圈选后显示）";
+  // 清除按钮 onclick 恢复默认圈选逻辑（swipe 分支曾覆写）
+  const clrBtn = $("ovBtnClear");
+  if (clrBtn) {
+    clrBtn.onclick = () => {
+      if (!_ovCropCfg) return;
+      delete _ovCropCfg.region_match; delete _ovCropCfg.target_crop; delete _ovCropCfg.target_crop_b64;
+      const stage = $("ovCropStage");
+      const rect = stage.querySelector(".crop-rect.region");
+      if (rect) rect.style.display = "none";
+      if (_ovRect2) _ovRect2.style.display = "none";
+      updateCropInfo(_ovCropCfg, stage.parentElement);
+      markDirty();
+      toast("已清除圈选", "");
+    };
+  }
   cropState = null;
   _ovCropCfg = null; _ovRect2 = null; _ovCropImg = null; _ovOnCropDone = null; _ovRealCfg = null; _ovTplName = null;
 }
@@ -3471,6 +3522,112 @@ function setupOverlayCrop(c) {
   updateCropInfo(c, stage.parentElement);
   // 圈选拖拽：按当前模式绘制选区（按钮切换），按住 Shift 临时圈选匹配图像
   // tap 模式（动作节点）：单击图上位置即标记点击坐标；显示已有标记点；隐藏圈选矩形
+  // swipe 模式（2026-10-11）：点击两下定义滑动（起点→终点），带序号标记与进行中引导
+  if (_ovCropMode === "swipe") {
+    const tips2 = stage.parentElement.querySelector(".crop-ov-tips");
+    const swCfg = c;
+    let swStep = (swCfg.swipe_x1 != null && swCfg.swipe_y1 != null && (swCfg.swipe_x2 == null || swCfg.swipe_y2 == null)) ? 1 : 0;
+    // 模式按钮行隐藏（对齐 tap 先例）：圈选匹配区域/图像等按钮与滑动无关（66c 审查 A1）
+    const row2 = $("ovModeRow");
+    if (row2) row2.style.display = "none";
+    // 底部信息条与预览标签按滑动语义改写（66c 审查 A3）
+    const infoEl = $("ovCropInfo");
+    if (infoEl) infoEl.innerHTML = '<span style="color:var(--ink-3)">在截图上点击两点：起点 → 终点</span>';
+    const prevEl = stage.parentElement.querySelector("#ovCropPreview .label");
+    if (prevEl) prevEl.textContent = "手势预览（标注后显示）";
+    // 头标题动态化（66c 审查 A2）：head 是 .crop-ov-body 的兄弟节点，须 document 级查询
+    const headEl = document.querySelector(".crop-ov-head");
+    if (headEl) headEl.childNodes[0].nodeValue = "✂ 标注滑动手势 ";
+    // 「清除圈选」按钮在滑动模式改语义为「清除手势」（66c 审查 A4）
+    const clrBtn = $("ovBtnClear");
+    if (clrBtn) {
+      clrBtn.textContent = "清除手势";
+      clrBtn.onclick = () => {
+        delete swCfg.swipe_x1; delete swCfg.swipe_y1; delete swCfg.swipe_x2; delete swCfg.swipe_y2; delete swCfg.swipe_ms;
+        stage.querySelectorAll(".sw-dot-start, .sw-dot-end").forEach((x) => x.remove());
+        swStep = 0;
+        if (tips2) tips2.innerHTML = '<b>① 点击滑动起点</b>（手指按下的位置）→ 下一步点终点。滑块可放大截图精确选点。';
+        if (infoEl) infoEl.innerHTML = '<span style="color:var(--ink-3)">在截图上点击两点：起点 → 终点</span>';
+        const pv = stage.parentElement.querySelector("#ovCropPreview .label");
+        if (pv) pv.textContent = "手势预览（标注后显示）";
+        markDirty();
+        toast("已清除手势，请重新标注", "");
+      };
+    }
+    const setTips = (html) => { if (tips2) tips2.innerHTML = html; };
+    // 引导文案统一「点击」语义（66c 审查 B1：原文案"按下/松开位置"暗示拖拽，与点击两下的真实交互矛盾）
+    const tipsStep0 = '<b>① 点击滑动起点</b>（手指按下的位置）→ 下一步点终点。滑块可放大截图精确选点。';
+    const tipsStep1 = '<b>② 点击滑动终点</b>（手指松开的位置）→ 点击后自动生成手势。';
+    // 已有完整标注：显示当前手势信息，用户可查看/微调而非被引导重标（66c 审查 B3）
+    if (swStep === 0 && swCfg.swipe_x1 != null && swCfg.swipe_x2 != null) {
+      const cur = swipePoints(swCfg);
+      const d = swipeDirOf(cur), len = swipeLenOf(cur);
+      const dTxt = d ? ({ up: "向上", down: "向下", left: "向左", right: "向右" }[d]) : "自定义方向";
+      setTips('<b>✓ 已标注手势</b>：起点(' + cur.x1 + ',' + cur.y1 + ') → 终点(' + cur.x2 + ',' + cur.y2 + ')，' + dTxt + " " + len + "px / " + cur.ms + "ms。" +
+        '点击图上任意位置可重新标注（从起点开始），或直接点「完成并保存」。');
+    } else {
+      setTips(swStep === 0 ? tipsStep0 : tipsStep1);
+    }
+    const rect2 = stage.querySelector(".crop-rect.region");
+    if (rect2) rect2.style.display = "none";
+    if (_ovRect2) _ovRect2.style.display = "none";
+    // 已有标记：画出起点/终点（序号样式与图上点选一致）
+    const drawSwDot = (x, y, cls, label) => {
+      const dot = document.createElement("div");
+      dot.className = "crop-tapdot " + cls;
+      dot.style.left = (x / img.naturalWidth * 100) + "%";
+      dot.style.top = (y / img.naturalHeight * 100) + "%";
+      dot.innerHTML = label;
+      dot.style.width = "18px"; dot.style.height = "18px"; dot.style.margin = "-9px 0 0 -9px";
+      dot.style.borderRadius = "50%"; dot.style.background = cls === "sw-dot-start" ? "#2C7BE5" : "#E5532C";
+      dot.style.color = "#fff"; dot.style.fontSize = "11px"; dot.style.fontWeight = "700";
+      dot.style.display = "flex"; dot.style.alignItems = "center"; dot.style.justifyContent = "center";
+      dot.style.pointerEvents = "none"; dot.style.zIndex = "5";
+      stage.appendChild(dot);
+    };
+    if (swCfg.swipe_x1 != null && swCfg.swipe_y1 != null) drawSwDot(swCfg.swipe_x1, swCfg.swipe_y1, "sw-dot-start", "1");
+    if (swCfg.swipe_x2 != null && swCfg.swipe_y2 != null) drawSwDot(swCfg.swipe_x2, swCfg.swipe_y2, "sw-dot-end", "2");
+    stage.onmousedown = (e) => {
+      if (!img || !img.complete) return;
+      const r = img.getBoundingClientRect();
+      const rx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const ry = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      const px = Math.round(rx * img.naturalWidth), py = Math.round(ry * img.naturalHeight);
+      if (swStep === 0) {
+        swCfg.swipe_x1 = px; swCfg.swipe_y1 = py;
+        swCfg.swipe_x2 = px; swCfg.swipe_y2 = py;
+        swStep = 1;
+        setTips(tipsStep1);
+        // 重建标记（起点已定，终点跟随前先只画起点）
+        stage.querySelectorAll(".sw-dot-start, .sw-dot-end").forEach((x) => x.remove());
+        drawSwDot(px, py, "sw-dot-start", "1");
+        toast("起点已设，请点终点", "ok");
+      } else {
+        const ms = swCfg.swipe_ms != null ? swCfg.swipe_ms : 400;
+        // 零长度守护（66 轮 UX 走查发现）：起终点同点/距离过短会产生伪滑动（引擎执行后像点击），
+        // 拦下并保持②态等待重试；<24px 视为误触（太短视觉上仍是点击）
+        if (Math.abs(px - swCfg.swipe_x1) < 24 && Math.abs(py - swCfg.swipe_y1) < 24) {
+          toast("终点与起点相同（距离过短会变成点击），请重新点击更远的位置", "err");
+          e.preventDefault();
+          return;
+        }
+        swCfg.swipe_x2 = px; swCfg.swipe_y2 = py; swCfg.swipe_ms = ms;
+        swWrite(swCfg, swCfg.swipe_x1, swCfg.swipe_y1, px, py, ms);
+        swStep = 0;
+        const cur = swipePoints(swCfg);
+        const d = swipeDirOf(cur);
+        setTips('<b>✓ 手势已生成</b>：' + swCfg.action + '。可点「完成并保存」写入节点，或继续点击重新定义。');
+        stage.querySelectorAll(".sw-dot-start, .sw-dot-end").forEach((x) => x.remove());
+        drawSwDot(swCfg.swipe_x1, swCfg.swipe_y1, "sw-dot-start", "1");
+        drawSwDot(px, py, "sw-dot-end", "2");
+        toast("已定义滑动" + (d ? "（" + ({ up: "向上", down: "向下", left: "向左", right: "向右" }[d]) + " " + swipeLenOf(cur) + "px）" : ""), "ok");
+      }
+      updateCropInfo(c, stage.parentElement);
+      markDirty();
+      e.preventDefault();
+    };
+    return;
+  }
   if (_ovCropMode === "tap") {
     const tips2 = stage.parentElement.querySelector(".crop-ov-tips");
     if (tips2) tips2.innerHTML = "点击图上位置即标记点击坐标（写入 adb_tap）；滑块可放大截图精确选点；点「保存并关闭」生效返回。";
@@ -3626,6 +3783,13 @@ function positionTapMarker(box, c) {
 function syncTapFromAction(c) {
   const m = (c.action || "").match(/^adb_tap\s+(\d+)\s+(\d+)$/);
   if (m) { c.tap_x = parseInt(m[1], 10); c.tap_y = parseInt(m[2], 10); }
+  // swipe 形态手动直写 action 串时反向对齐标注（否则标注残留成误导显示，2026-10-11 脱节根因之一）
+  const sw = (c.action || "").match(/^swipe\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?:\s+(\d+))?/i);
+  if (sw) {
+    c.swipe_x1 = Math.max(0, +sw[1]); c.swipe_y1 = Math.max(0, +sw[2]);
+    c.swipe_x2 = Math.max(0, +sw[3]); c.swipe_y2 = Math.max(0, +sw[4]);
+    c.swipe_ms = sw[5] ? +sw[5] : 400;
+  }
 }
 // 统一写入点击坐标（标记 + 执行动作同源）：所有「在图上标记点击」的路径都必须走它，
 // 同时维护 c.tap_x/tap_y 与 c.action(执行器真正读取源)，根除双源脱节（2026-08-30 复发根因：
@@ -3650,6 +3814,42 @@ function reconcileAllTaps() {
   if (S.graph && S.graph.nodes) all.push(...Object.values(Array.isArray(S.graph.nodes) ? S.graph.nodes : S.graph.nodes));
   if (S.subgraphs) for (const k of Object.keys(S.subgraphs)) { const s = S.subgraphs[k]; if (s && s.nodes) all.push(...Object.values(Array.isArray(s.nodes) ? s.nodes : s.nodes)); }
   for (const n of all) if (n && n.type === "action") reconcileTap(n);
+}
+
+/* reconcileSwipe：滑动手势双源自愈（对齐 reconcileTap 机制，2026-10-11）。
+ * swipe 节点有两个坐标源：c.swipe_*（图上标注）与 c.action 串（引擎执行真源）。
+ * 脱节场景：先标注（swWrite 同步 action），后切动作类型/自定义框直写 action 串 →
+ * 标注与 action 各奔东西 → 面板显示 A 引擎执行 B（用户报"滑动变点击"的根因）。
+ * 规则：swipe_* 标注为真源回写 action（用户所见即所得）；action 是 swipe 形态但缺标注时反推标注。
+ * 仅处理 action 节点且 action 为 swipe 形态或存在 swipe_* 标注的节点，其他动作零触碰。 */
+function reconcileSwipe(n) {
+  if (!n || n.type !== "action") return;
+  const c = n.config || n;
+  const m = ("" + (c.action || "")).match(/^swipe\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?:\s+(\d+))?/i);
+  const marked = c.swipe_x1 != null && c.swipe_y1 != null && c.swipe_x2 != null && c.swipe_y2 != null;
+  if (marked) {
+    const ms = c.swipe_ms != null ? c.swipe_ms : (m && m[5] ? +m[5] : 400);
+    const want = "swipe " + c.swipe_x1 + " " + c.swipe_y1 + " " + c.swipe_x2 + " " + c.swipe_y2 + " " + ms;
+    if (m) {
+      // action 是 swipe 形态：以标注为准对齐（含缺省时长）
+      if (c.action !== want) c.action = want;
+      if (c.swipe_ms == null && m[5]) c.swipe_ms = +m[5];
+    } else {
+      // action 不是 swipe 形态（用户切成了别的动作）：标注已无意义，清掉防复活
+      delete c.swipe_x1; delete c.swipe_y1; delete c.swipe_x2; delete c.swipe_y2; delete c.swipe_ms;
+    }
+  } else if (m) {
+    // action 是 swipe 形态但缺标注（旧数据/外部写入）：反推标注，面板可见可微调
+    c.swipe_x1 = Math.max(0, +m[1]); c.swipe_y1 = Math.max(0, +m[2]);
+    c.swipe_x2 = Math.max(0, +m[3]); c.swipe_y2 = Math.max(0, +m[4]);
+    c.swipe_ms = m[5] ? +m[5] : 400;
+  }
+}
+function reconcileAllSwipes() {
+  const all = [];
+  const graphs = [S.graph, ...Object.values(S.subgraphs || {})];
+  for (const g of graphs) for (const n of (g.nodes || [])) all.push(n);
+  for (const n of all) reconcileSwipe(n);
 }
 /* 三源模型（08-29 注释固化）：所有节点的图像字段只有三种形态 ——
  * c.image        条件/循环类节点的模板文件名（上传/粘贴/圈选存模板后写入）；
@@ -3721,8 +3921,18 @@ function matchImageSelectHTML(label) {
     '<button class="fbtn mini" id="btnUpImg" style="margin-top:6px">上传图片 / 粘贴 Ctrl+V</button>' +
     '<button class="fbtn mini" id="btnDelImg" style="margin-top:6px;margin-left:6px">🗑 删除所选</button>' +
     '<button class="fbtn mini" id="btnSnapCond" style="margin-top:6px;margin-left:6px">截取模拟器画面</button>' +
-    '<div class="hint">可直接 Ctrl+V 粘贴截图作为模板（保存至 adapters/templates/' + esc(PKG) + '/）。不再需要的截图可点「删除所选」清理，避免模板库膨胀。</div>' +
-    '<div class="hint" style="color:var(--ink-3)">判定方式为「区域内匹配」时：点「截取模拟器画面」会直接进入圈选（区域+目标图）；已有目标图模板时圈好区域后点「用模板作匹配图像」复用。</div></div>';
+    '<div class="hint">可直接 Ctrl+V 粘贴截图作为模板（保存至 adapters/templates/' + esc(PKG) + '/）。不再需要的截图可点「删除所选」清理，避免模板库膨胀。</div></div>';
+}
+
+/* region_match 模式的截图来源块（2026-10-04 收敛：废除「先选截图再圈选」两步式历史交互）。
+ * 判定数据只有区域坐标+目标小图（由圈选写入），模板下拉/上传/删除均不参与执行，故不再渲染。
+ * 唯一入口 = 「截取模拟器画面并圈选」（btnSnapCond → snapAndCrop，region_match 分支直写 config）。
+ * 按钮 id 保持 btnSnapCond 不变（绑定代码零改动；39 轮同款坑不重踩：绑定不得依赖被删元素存在）。 */
+function regionMatchSourceHTML() {
+  return '<div class="fgroup"><label>判定用图（圈选生成，非模板库）</label>' +
+    '<button class="fbtn mini" id="btnSnapCond" style="margin-top:6px">截取模拟器画面并圈选</button>' +
+    '<div class="hint">点按钮抓取模拟器实时画面进入圈选：橙色框=匹配区域，绿色框=匹配图像，圈完自动保存到节点。' +
+    '判定只使用圈选的区域坐标 + 目标小图，不读取模板库；圈选浮窗内可用「用模板作匹配图像」把已有模板当目标图来源。</div></div>';
 }
 /* ---- 「指定区域内匹配图像」属性块：条件 / if-else / 循环退出判定共用（按模块语义适配文案，非照搬）
  * mode: cond=条件判断 · if_else=如果-否则 · loop=循环退出判定 ---- */
@@ -3730,7 +3940,9 @@ function regionMatchPropsHTML(c, mode) {
   const rmSrc = nodeImgSrc2(c); // 匹配图优先（防错挂模板显示成别的节点的截图）
   /* 2026-09-19 用户要求：while/循环 的「匹配截图」关闭「✂ 截图选区」入口；
      圈选写入仍通过「截取模拟器画面并圈选」完成；判定只用 region_match+target_crop_b64。 */
-  const showCropBtn = mode !== "loop";
+  /* 2026-10-04 收敛扩展到 condition/if_else/else_if：✂ 截图选区打开的是陈旧底图圈选（36 轮
+     坐标错位事故来源），实时截图入口 btnSnapCond 已全覆盖，故全部模式不再渲染 btnOpenCrop。 */
+  const showCropBtn = false; // mode !== "loop"; —— 全模式关闭（见上注释）；btnOpenCrop 渲染分支保留仅为兼容，实际不可达
   let html = '<div class="fgroup"><label>匹配截图</label>' +
     (showCropBtn
       ? '<button class="fbtn" id="btnOpenCrop">✂ 截图选区</button>'
@@ -3740,10 +3952,10 @@ function regionMatchPropsHTML(c, mode) {
       : '<span style="color:var(--ink-3)">尚未圈选匹配区域</span>') + '</div>' +
     (rmSrc
       ? '<div class="crop-preview"><div class="label">原截图预览</div><img src="' + esc(rmSrc) + '" style="max-height:160px"></div>'
-      : '<div class="hint">尚未设置截图：请先在上方选择/上传一张截图，再点击「截图选区」</div>') +
+      : '') +
     (c.target_crop_b64
       ? '<div class="crop-preview"><div class="label">匹配图像预览</div><img src="' + esc(c.target_crop_b64) + '"></div>'
-      : '') +
+      : (!rmSrc ? '<div class="hint" style="color:var(--ink-3)">尚未圈选：点上方「截取模拟器画面并圈选」，橙框框住要监判的画面区域，同屏再圈绿框目标图</div>' : '')) +
     '<div class="hint">' + (showCropBtn
       ? "点击按钮打开浮窗：圈 选匹配区域与匹配图像，滑块可放大截图精确圈选"
       : "循环判定不使用整图；请用上方「截取模拟器画面并圈选」写入区域与目标图。判定数据仅为圈选区域坐标 + 目标小图。") +
@@ -4220,10 +4432,18 @@ function renderProps() {
   if (n.type === "action") {
     const _preset = ACTION_PRESETS.find((a) => a.v === c.action);
     const _customVal = c.action && !_preset ? c.action : "";
+    // 69 轮：滑动形态收敛——「执行动作」基础块整体隐藏（下拉/当前动作/自定义框/原语示例），
+    // 用户只在下方「滑动手势」区标注；隐藏也堵住手动直写 action 串造成双源脱节的口子（66 轮根因入口）。
+    // 逃生口在滑动面板顶部说明条（切换为其他动作）。
+    if (isSwipeAction(c.action)) {
+      html += '<div class="fgroup"><label>执行动作</label><div class="hint" style="color:var(--ink-2)">滑动动作已选择——在下方「滑动手势」区标注即可，无需手动配置原语。</div></div>';
+    } else {
     html += '<div class="fgroup"><label>执行动作</label><select id="nAction">' +
       '<option value="">— 自定义 —</option>' +
       ACTION_PRESETS.map((a) => '<option value="' + esc(a.v) + '"' + (c.action === a.v ? " selected" : "") + ">" + esc(a.l) + "</option>").join("") +
       "</select>" +
+      // 69 轮 2b：选中滑动预设时的衔接提示（说明为什么下方长得不一样）
+      (isSwipePreset(_preset) ? '<div class="hint" style="color:var(--loop,#7A6FCE)">已选择滑动：此动作用下方「滑动手势」区域标注起点/终点即可，无需手写原语。</div>' : "") +
       '<div class="hint" id="actCur">当前动作：<b>' + esc(c.action || "（未配置）") + "</b></div>" +
       (_preset ? "" :
         '<input type="text" id="nActionCustom" placeholder="自定义动作原语" value="' + esc(_customVal) + '" style="margin-top:4px">') +
@@ -4231,6 +4451,7 @@ function renderProps() {
         "从下拉选择预设，或选「自定义」填写原语。",
         "原语示例：adb_tap 960 1008 / am_start <activity> / wait 1000 / swipe 100 500 900 500 300 / key back / ocr_check 文本。选中预设时不再显示自定义框。") +
       "</div>";
+    }
     // —— 等待时长手动设置：当动作为 wait 时，显示数值输入框 + 实时预览 ——
     if (isWaitAction(c.action)) {
       const ms = getWaitMs(c.action);
@@ -4297,7 +4518,7 @@ function renderProps() {
       html += matchImageSelectHTML();
     }
     if (c.kind === "region_match") {
-      html += matchImageSelectHTML("截图来源（先选截图，再圈选区域与目标）");
+      html += regionMatchSourceHTML();
       html += regionMatchPropsHTML(c, "if_else");
     }
     if (c.kind === "ocr_contains") {
@@ -4324,7 +4545,7 @@ function renderProps() {
     if (c.kind === "region_match") {
       // 50 轮：补截图来源模块（与 while / if_else 的 region_match 对齐）——含「截取模拟器画面」按钮，
       // 截图后自动进入圈选（区域+目标图），btnSnapCond 事件绑定在 condition 分支已存在
-      html += matchImageSelectHTML("截图来源（先选截图，再圈选区域与目标）");
+      html += regionMatchSourceHTML();
       html += regionMatchPropsHTML(c, "cond");
       html += '<div class="fgroup"><label>重试循环</label><div style="font-size:11.5px;color:var(--ink-2)">FALSE 分支可接「等待」动作节点，再从等待节点拖线回本节点输入端口，实现等待后继续判断（循环重试）</div></div>';
     }
@@ -4351,7 +4572,7 @@ function renderProps() {
       html += matchImageSelectHTML();
     }
     if (c.kind === "region_match") {
-      html += matchImageSelectHTML("截图来源（先选截图，再圈选区域与目标）");
+      html += regionMatchSourceHTML();
       html += regionMatchPropsHTML(c, "if_else");
     }
     if (c.kind === "ocr_contains") {
@@ -4643,6 +4864,16 @@ function renderProps() {
     }
     // —— 滑动专用面板事件绑定（c.action 以 swipe 开头时）——
     if (isSwipeAction(c.action)) {
+      // 69 轮逃生按钮：确认后清空 action 回「自定义」态，执行动作块恢复显示
+      const swLeave = $("btnSwLeave");
+      if (swLeave) swLeave.onclick = () => {
+        if (!confirm("清空滑动动作并返回通用动作选择？\n当前手势标注（起点/终点/截图）将一并清除。")) return;
+        delete c.swipe_x1; delete c.swipe_y1; delete c.swipe_x2; delete c.swipe_y2; delete c.swipe_ms;
+        delete c.tap_img; delete c.tap_img_data;
+        c.action = "";
+        markDirty(); render(); renderProps();
+        toast("已切换为自定义动作，可在上方选择其他动作", "ok");
+      };
       const swBox = $("swipeImgBox");
       const swPts = () => swipePoints(c);
       const reRender = () => { markDirty(); render(); renderProps(); };
@@ -4665,6 +4896,11 @@ function renderProps() {
           const ny = Math.max(0, Math.round((ev.clientY - r.top) / r.height * im.naturalHeight));
           if (stage === 0) { swWrite(c, nx, ny, nx, ny, swPts() ? swPts().ms : 400); stage = 1; toast("已设起点，请点击终点", "ok"); }
           else {
+            // 零长度守护（66 轮）：同点/过短会产生伪滑动，拦下保持终点待重试
+            if (Math.abs(nx - c.swipe_x1) < 24 && Math.abs(ny - c.swipe_y1) < 24) {
+              toast("终点与起点相同（距离过短会变成点击），请重新点击更远的位置", "err");
+              return;
+            }
             swWrite(c, c.swipe_x1, c.swipe_y1, nx, ny, c.swipe_ms != null ? c.swipe_ms : 400); stage = 1;
             const d = swipeDirOf(swPts());
             toast("已定义滑动" + (d ? "（" + ({ up: "向上", down: "向下", left: "向左", right: "向右" }[d]) + " " + swipeLenOf(swPts()) + "px）" : ""), "ok");
@@ -4676,20 +4912,30 @@ function renderProps() {
       if (swSnap) swSnap.onclick = async () => {
         swSnap.disabled = true; const old = swSnap.textContent; swSnap.textContent = "截取中…";
         try {
-          const r = await fetch("/api/device/screenshot");
-          if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + r.status)); }
-          const blob = await r.blob();
-          const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error("read fail")); fr.readAsDataURL(blob); });
-          // 51 轮：同 btnSnapDev——截图落模板文件，防内联图进快照（565MB 教训）
+          const dataUrl = await snapDeviceShot();
+          // 2026-10-11：改走统一圈选浮窗 swipe 模式（引导文案+序号标记），
+          // 取代旧的「截图落缩略图后盲点两点」；截图仍落模板文件防内联（51 轮教训）
           let savedTpl = false;
           try {
             const up = await uploadTemplateImage(PKG, "snap_" + n.id.replace(/[^a-zA-Z0-9]/g, "") + "_" + Date.now() + ".png", dataUrl);
             if (up && up.ok) { c.tap_img = up.name; delete c.tap_img_data; savedTpl = true; }
           } catch (eUp) {}
           if (!savedTpl) { c.tap_img_data = dataUrl; delete c.tap_img; } // 上传失败降级：仅内存
-          swReset();
-          reRender();
-          toast("已截取模拟器画面，在图上依次点击起点、终点", "ok");
+          const ovCfg = Object.assign({}, c);
+          const onDone = () => { reRender(); };
+          openCropOverlay(ovCfg, n, { defaultMode: "swipe" });
+          // 浮窗「完成并保存」会把 ovCfg 的 swipe_* 同步回 c（ovCfg 是副本）；
+          // 这里接管 ovBtnSave：先把副本字段拷回真实 config 再走原保存
+          const rawSave = $("ovBtnSave").onclick;
+          $("ovBtnSave").onclick = () => {
+            ["swipe_x1", "swipe_y1", "swipe_x2", "swipe_y2", "swipe_ms", "tap_img", "tap_img_data"].forEach((k) => {
+              if (ovCfg[k] !== undefined) c[k] = ovCfg[k];
+            });
+            swWrite(c, c.swipe_x1, c.swipe_y1, c.swipe_x2, c.swipe_y2, c.swipe_ms != null ? c.swipe_ms : 400);
+            $("ovBtnSave").onclick = rawSave;
+            rawSave();
+            if (onDone) onDone();
+          };
         } catch (e) { toast("截取失败：" + (e.message || e), "err"); }
         finally { const b2 = $("btnSwSnap"); if (b2) { b2.disabled = false; b2.textContent = old; } }
       };
@@ -4759,8 +5005,10 @@ function renderProps() {
       fillTemplateUI(c, "nImage", "condThumb");
       $("btnUpImg").onclick = () => { S.activeImg = { kind: "tpl", nodeId: n.id }; $("fileImg").click(); };
       if ($("btnDelImg")) $("btnDelImg").onclick = () => delSelectedTemplate("nImage", c);
-      // 「截取模拟器画面」：拉取设备画面 → 圈选浮窗裁剪目标小图 → 存为新模板并自动选中（与 btnSnapLoop 同链路）；
-      // 数据源走 tap_img_data 内联路径（临时 cfg，不污染节点 config）；圈选成功后 onCropDone 接管
+    }
+    // 「截取模拟器画面」：region_match 模式属性面板已无 nImage（2026-10-04 收敛），绑定必须在 if($("nImage")) 之外
+    // （39 轮 btnSnapLoop 同款坑：绑定依赖被删元素存在 → 按钮无响应）。链路：拉设备画面 → 圈选浮窗（区域+目标图）→ 直写 config
+    {
       const sc = $("btnSnapCond");
       if (sc) sc.onclick = () => snapAndCrop(c, n, { tplPrefix: "cond", btn: sc });
     }
@@ -4815,8 +5063,9 @@ function renderProps() {
       fillTemplateUI(c, "nImage", "condThumb");
       $("btnUpImg").onclick = () => { S.activeImg = { kind: "tpl", nodeId: n.id }; $("fileImg").click(); };
       if ($("btnDelImg")) $("btnDelImg").onclick = () => delSelectedTemplate("nImage", c);
-      // 「截取模拟器画面」：拉取设备画面 → 圈选浮窗裁剪目标小图 → 存为新模板并自动选中（与 btnSnapLoop 同链路）；
-      // 数据源走 tap_img_data 内联路径（临时 cfg，不污染节点 config）；圈选成功后 onCropDone 接管
+    }
+    // 同 condition/else_if：region_match 模式无 nImage，btnSnapCond 绑定须在 if($("nImage")) 之外（2026-10-04）
+    {
       const sc = $("btnSnapCond");
       if (sc) sc.onclick = () => snapAndCrop(c, n, { tplPrefix: "cond", btn: sc });
     }
@@ -5061,7 +5310,12 @@ function runFromSelected(mock) {
 async function adoptRunning() { // 45d 轮：页面加载/切任务后接管服务端已在跑的运行（此前刷新会丢失跟踪，按钮态错误）
   try {
     const d = await api("/api/flows/runstatus");
-    if (d && d.running) { S.run = d; S.runStart = Date.now(); startPoll(); logRun("⚠ 检测到服务端有运行中的工作流，已重新接管跟踪（可能是刷新前启动的）"); }
+    // 71 轮：run-all 模式只接管本 App 的运行；其他 App 在跑时不接管（follow=1 时由跟随定时器处理并提示）
+    const _otherRunAll = d && d.running && d.mode === "run_all" && d.pkg !== PKG;
+    if (d && d.running && !_otherRunAll) { S.run = Object.assign({ _self: true }, d); S.runStart = Date.now(); startPoll(); logRun("⚠ 检测到服务端有运行中的工作流，已重新接管跟踪（可能是刷新前启动的）"); }
+    else if (_otherRunAll) {
+      logRun("⚠ 流水线正在运行其他 App（" + (d.pkg || "") + "），本画布不接管跟踪");
+    }
     else {
       /* 2026-09-19：服务端未在跑时清掉本地残留运行态，避免顶栏按钮卡在「运行中」 */
       if (!pollTimer && S.run && S.run.running) {
@@ -5076,6 +5330,57 @@ async function adoptRunning() { // 45d 轮：页面加载/切任务后接管服�
     setInterval(pliveTick, 2000);
     pliveTick();
     logRun("已进入流水线跟随模式：将自动定位运行中的节点（2s 刷新）");
+  }
+  // 71 轮：run-all 跟随模式 —— ?follow=1 时轮询 /api/flows/runstatus，
+  // run-all 运行且 pkg 匹配 → 注入 nodes/events 到 S.run（复用 run-child 高亮与 gotoRunNode）。
+  // 交给独立定时器，编辑器自身运行优先（S.run.running 时让位）。
+  if (typeof FOLLOW !== "undefined" && FOLLOW) {
+    let lastTaskId = null;
+    setInterval(async () => {
+      try {
+        const d = await api("/api/flows/runstatus");
+        // 编辑器自身有运行 → 让位
+        if (S.run && S.run.running && S.run._self) return;
+        if (d && d.running && d.mode === "run_all") {
+          if (d.pkg !== PKG) {
+            if (!S._followWrongPkg) { S._followWrongPkg = true;
+              logRun("⚠ 流水线正在运行其他 App（" + (d.pkg || "") + "），本画布不跟随");
+            }
+            // 71 轮修正：切换到其他 App 时清掉本画布的跟随态与旧高亮（防别家运行残影）。
+            // follow 模式拥有运行态显示权：adoptRunning 残留的 _self:true 态一并清除。
+            if (S.run && S.run._self === false) {
+              S.run = null; S.runStart = null; S._followLastNode = null;
+              updateRunBtns(); render();
+            } else if (S.run && S.run._self === true && !S._pollTimerSelf) {
+              S.run = null; S.runStart = null; S._followLastNode = null;
+              updateRunBtns(); render();
+            }
+            return;
+          }
+          S._followWrongPkg = false;
+          if (lastTaskId && d.task_id !== lastTaskId) {
+            logRun("流水线已切换到任务「" + (d.task_name || d.task_id) + "」");
+          }
+          lastTaskId = d.task_id || null;
+          S.run = { running: true, _self: false, steps: (d.nodes || []).length,
+                    events: d.events || [], nodes: d.nodes || [], paused: d.paused };
+          if (!S.runStart) S.runStart = Date.now();
+          // 节点变化时自动定位到当前运行节点（59 轮 gotoRunNode 复用）
+          const cur = runActiveNode();
+          if (cur && cur.id !== (S._followLastNode || "")) {
+            S._followLastNode = cur.id;
+            try { gotoRunNode(); } catch (e) {}
+          }
+          updateRunBtns();
+        } else if (S.run && S.run._self === false) {
+          // run-all 结束：清跟随态
+          S.run = null; S.runStart = null; S._followLastNode = null;
+          updateRunBtns(); render();
+          logRun("流水线运行已结束，跟随模式待机");
+        }
+      } catch (e) { /* 服务不可达静默 */ }
+    }, 2000);
+    logRun("已进入批量执行跟随模式：自动定位运行节点（2s 刷新）");
   }
 }
 /* 61 轮：流水线跟随。live 数据形如 {running,pkg,task_id,task_name,node_id,node_name,node_type,steps,ts}。 */
@@ -5119,10 +5424,20 @@ async function pliveTick() {
 }
 function startPoll() {
   stopPoll();
+  S._pollTimerSelf = true;   // 71 轮：编辑器自身运行的轮询活跃标记（follow 清理条件用）
   pollTimer = setInterval(async () => {
     let d;
     try { d = await api("/api/flows/runstatus"); } catch (e) { return; } // 45c 轮：单拍拉取失败跳过本拍，轮询继续不清
+    // 71 轮：run-all 切到其他 App → 本画布运行态已结束（旧 App 跑完了），清运行态+高亮，
+    // 避免"上一家的高亮残留"；follow 定时器会提示"正在运行其他 App"
+    if (d && d.running && d.mode === "run_all" && d.pkg !== PKG) {
+      S.run = null; S.runStart = null; S._followLastNode = null;
+      updateRunBtns(); render();
+      return;
+    }
+    if (d && d.mode === "run_all" && d.pkg !== PKG) return;
     S.run = d;
+    if (d.running && S.run && S.run._self === undefined) S.run._self = true; // 71 轮：编辑器自身运行标记
     if (d.running && !S.runStart) S.runStart = Date.now(); // 45d 轮：计时起点（接管/启动都覆盖）
     if (d.running && S.runStart && Date.now() - S.runStart > 60000
       && (!S._lastBeat || Date.now() - S._lastBeat > 60000)) {
@@ -5155,7 +5470,7 @@ function startPoll() {
   }, 600);
   updateRunBtns();
 }
-function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } S._pollTimerSelf = false; }
 function updateRunBtns() {
   const running = S.run && S.run.running;
   $("btnRun").disabled = running;
@@ -5314,7 +5629,7 @@ function importJSON(file) {
       if (!d.graph || !Array.isArray(d.graph.nodes)) throw new Error("格式无效（缺 graph.nodes）");
       S.graph = d.graph;
       S.subgraphs = d.subgraphs || {};
-      reconcileAllTaps(); // 加载即自愈：双源脱节节点自动对齐
+      reconcileAllTaps(); reconcileAllSwipes(); // 加载即自愈：双源脱节节点自动对齐
       S.name = d.name || S.name;
       S.dirty = true;
       enterCtx(null);
@@ -5768,7 +6083,7 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
     if (!window.confirm(msg)) return;
     S.graph = flow.graph;
     S.subgraphs = flow.subgraphs;
-    reconcileAllTaps(); // DSL→图同步后自愈：保证运行坐标与画布标记同源
+    reconcileAllTaps(); reconcileAllSwipes(); // DSL→图同步后自愈：保证运行坐标与画布标记同源（tap+swipe）
     S.dsl = { code: code, graphHash: flow.graphHash, updatedAt: Date.now() };
     S.ctx = null;
     S.sel = null;
@@ -5978,9 +6293,20 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
   function ratioKey() { return "autofw_split_" + (PKG || "default"); }
   function applyStoredRatio() {
     try {
-      var r = localStorage.getItem(ratioKey());
+      var wrap = document.getElementById("splitWrap");
       var pane = document.getElementById("dslPane");
-      if (r && pane) pane.style.flex = "0 0 " + r + "%";
+      // 69 轮：默认收起代码栏（画布优先）。localStorage 记住用户显式选择：
+      // collapse=1 → 收起；collapse=0 → 展开；无记录（首次）→ 默认收起。
+      // 收起态下拖动分割条/双击复位等比例操作不生效，展开后再存储比例。
+      var pref = localStorage.getItem("autofw_code_collapse_" + (PKG || "default"));
+      if (wrap) {
+        var collapsed = (pref === "1" || pref === null);
+        wrap.classList.toggle("collapse-r", collapsed);
+        if (!collapsed && pane) {
+          var r = localStorage.getItem(ratioKey());
+          if (r) pane.style.flex = "0 0 " + r + "%";
+        }
+      }
     } catch (e) {}
   }
   function storeRatio() {
@@ -6023,14 +6349,25 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
     var cl = document.getElementById("btnCollapseL");
     var cr = document.getElementById("btnCollapseR");
     var wrap = document.getElementById("splitWrap");
-    if (cl && wrap) cl.addEventListener("click", function () { wrap.classList.toggle("collapse-r"); refreshViewToggles(); });
-    if (cr && wrap) cr.addEventListener("click", function () { wrap.classList.toggle("collapse-l"); refreshViewToggles(); });
+    if (cl && wrap) cl.addEventListener("click", function () {
+      wrap.classList.toggle("collapse-r");
+      try { localStorage.setItem("autofw_code_collapse_" + (PKG || "default"), wrap.classList.contains("collapse-r") ? "1" : "0"); } catch (e) {}
+      refreshViewToggles();
+    });
+    if (cr && wrap) cr.addEventListener("click", function () {
+      wrap.classList.toggle("collapse-l");
+      refreshViewToggles();
+    });
     var ec = document.getElementById("btnSyncCode");
     if (ec) ec.addEventListener("click", function () { checkedSync("graph2code"); });
     var em = document.getElementById("btnExportMd");
     if (em) em.addEventListener("click", doExportMd);
     var ex = document.getElementById("expandCode");
-    if (ex && wrap) ex.addEventListener("click", function () { wrap.classList.remove("collapse-r"); refreshViewToggles(); });
+    if (ex && wrap) ex.addEventListener("click", function () {
+      wrap.classList.remove("collapse-r");
+      try { localStorage.setItem("autofw_code_collapse_" + (PKG || "default"), "0"); } catch (e) {}
+      refreshViewToggles();
+    });
     var exg = document.getElementById("expandGraph");
     if (exg && wrap) exg.addEventListener("click", function () { wrap.classList.remove("collapse-l"); refreshViewToggles(); });
     var more = document.getElementById("btnMore");

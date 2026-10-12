@@ -131,8 +131,25 @@ class FlowDeviceExecutor(FlowExecutor):
             if parts[0] == "swipe":
                 if len(parts) < 5:
                     raise ValueError("swipe 需要坐标（swipe x1 y1 x2 y2 ms）")
+                # 66 轮：滑动生效自检（与 tap 的 47 轮自检同款）——执行前后各抓一帧比对；
+                # 零差异=滑动无效果（起终点相同/距离过短/界面静止无滚动/模拟器无响应），
+                # 写入 last_error 与事件日志，不改变流程走向（只补可观测性）
+                self.swipe_verify = None
+                before = self._snap_safe()
                 self._dev().swipe(int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]),
                                   int(parts[5]) if len(parts) > 5 else 300)
+                import time as _t
+                _t.sleep(1.0)  # 等滚动/动画停止
+                after = self._snap_safe()
+                if before is not None and after is not None:
+                    self.swipe_verify = self._diff_score(before, after)
+                    if self.swipe_verify is not None and not self.swipe_verify["changed"]:
+                        self.last_error = ("滑动 (%d,%d)→(%d,%d) 后画面无变化——可能起终点相同、"
+                                           "距离过短、页面不可滚动或模拟器未响应"
+                                           % (int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])))
+                self.last_swipe = {"x1": int(parts[1]), "y1": int(parts[2]),
+                                   "x2": int(parts[3]), "y2": int(parts[4]),
+                                   "verify": self.swipe_verify}
                 return True
             if parts[0] == "key":
                 if len(parts) < 2:

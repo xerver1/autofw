@@ -693,16 +693,26 @@ def _resolve_default_flow(pkg):
 
 # ---------- run-all 批量执行（只执行勾选任务，按新顺序串行） ----------
 
-def run_all_start(pkg):
-    """启动批量执行：读 meta → 按 order 取 enabled 任务 → 串行执行（每任务独立 Runner/Executor）。"""
+def run_all_start(pkg, from_task=None):
+    """启动批量执行：读 meta → 按 order 取 enabled 任务 → 串行执行（每任务独立 Runner/Executor）。
+    70 轮：from_task 不为 None 时从该任务（含自身）起跑启用任务（order >= from_task.order），
+    用于「从子任务开始运行」——跳过前面已执行过的任务。"""
     global _run_all
     meta = load_meta(pkg)
     if meta is None:
         return {"ok": False, "error": "工作流不存在：%s" % pkg}
     tasks = [t for t in meta.get("tasks", []) if t.get("enabled", True)]
     tasks.sort(key=lambda t: (t.get("order", 0), t.get("id", "")))
+    if from_task is not None:
+        frm = next((t for t in tasks if str(t.get("id")) == str(from_task)), None)
+        if frm is None:
+            return {"ok": False, "error": "起始任务不存在或未启用：%s" % from_task}
+        frm_order = frm.get("order", 0)
+        tasks = [t for t in tasks
+                 if (t.get("order", 0) > frm_order)
+                 or (t.get("order", 0) == frm_order and str(t.get("id")) == str(from_task))]
     if not tasks:
-        return {"ok": False, "error": "没有已勾选（启用）的任务"}
+        return {"ok": False, "error": "没有可执行的任务（起始任务之后无已启用任务）"}
     with _run_all_lock:
         if _run_all is not None and _run_all.get("running"):
             return {"ok": False, "error": "已有批量执行在进行中"}
@@ -744,6 +754,8 @@ def _run_all_worker(pkg, tasks, session):
                 continue
             executor = FlowDeviceExecutor()
             runner = flow_engine.FlowRunner(executor, flow)
+            runner.task_id = t["id"]
+            runner.task_name = t["name"]
             session["runner"] = runner
             try:
                 summary = runner.run()
@@ -1279,6 +1291,8 @@ def flow_run(pkg, mock=False, start_node_id=None, task_id=None):
             else:
                 executor = FlowDeviceExecutor()
             runner = flow_engine.FlowRunner(executor, flow)
+            runner.task_id = task_id or None
+            runner.task_name = task_id or None
             _flow_runner = runner
 
     def _worker():
@@ -1350,13 +1364,18 @@ def flow_run_status():
     if run_all is not None and not single_running:
         s = run_all
         runner = s.get("runner")
+        # 71 轮：节点级进度透出（与单任务分支对齐）——run-all 模式编辑器跟随高亮需要
+        # runner.node_recs/events 尾部；runner 为 None（任务间隙/未开始）给空数组
+        r_nodes = (list(runner.node_recs[-50:]) if runner else [])
+        r_events = (list(runner.events[-50:]) if runner else [])
         return {"mode": "run_all", "pkg": s.get("pkg"),
                 "running": bool(s.get("running")),
                 "task_index": s.get("task_index", 0),
                 "task_id": s.get("task_id"), "task_name": s.get("task_name"),
                 "total": s.get("total", 0), "done": s.get("done", []),
                 "last_log": s.get("last_log", ""), "error": s.get("error"),
-                "paused": bool(runner and getattr(runner, "paused", False))}
+                "paused": bool(runner and getattr(runner, "paused", False)),
+                "nodes": r_nodes, "events": r_events}
     with _flow_runner_lock:
         if _flow_runner is None:
             return {"running": False}
@@ -1364,7 +1383,8 @@ def flow_run_status():
         done = getattr(r, "_done", True)
         return {"running": not done, "paused": getattr(r, "paused", False),
                 "steps": r.steps, "events": r.events[-50:],
-                "nodes": r.node_recs[-50:]}
+                "nodes": r.node_recs[-50:],
+                "task_id": getattr(r, "task_id", None), "task_name": getattr(r, "task_name", None)}
 
 
 def flow_prints():
@@ -1623,8 +1643,7 @@ def auto_match_image(pkg, step):
     return None
 
 
-# MUMU_MANAGER / ADB_EXE 在下方 _locate_mumu_tool 定义后立即解析（发布可移植版）
-
+ADB_ADDR = "127.0.0.1:16384"
 
 def _locate_mumu_tool(name):
     """定位 MuMu 12 的 adb.exe / MuMuManager.exe（开源发行用：原写死路径仅适用单机）。
@@ -1696,6 +1715,8 @@ ADB_ADDR = "127.0.0.1:16384"
 
 MUMU_MANAGER = _locate_mumu_tool("MuMuManager.exe")  # 导入时一次性解析（原写死单机路径，发布可移植版）
 ADB_EXE = _locate_mumu_tool("adb.exe")
+
+
 
 
 def get_mumu_status():
@@ -2415,7 +2436,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(task_order(pkg, payload), ensure_ascii=False))
         elif self.path.startswith("/api/flows/") and self.path.endswith("/run-all"):
             pkg = self.path[len("/api/flows/"):-len("/run-all")]
-            self._send(200, json.dumps(run_all_start(pkg), ensure_ascii=False))
+            from_task = None
+            payload, err = self._read_json_body()
+            if not err and isinstance(payload, dict):
+                from_task = payload.get("from_task") or None
+            self._send(200, json.dumps(run_all_start(pkg, from_task=from_task), ensure_ascii=False))
         elif self.path.startswith("/api/flows/") and self.path.endswith("/run"):
             pkg = self.path[len("/api/flows/"):-len("/run")]
             task_id = None
