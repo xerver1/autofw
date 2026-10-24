@@ -146,6 +146,9 @@ class FlowPipeline:
                     add_failure(pkg, ["?"], "无可用工作流（meta/task 缺失）", pipeline="flow")
                     return
             enabled = [t for t in tasks if t.get("enabled", True)]
+            # 71 轮：任务边界暂停（MVP）——启动流水线（子进程模式）在子任务之间响应
+            # state/pause.flag：存在 = 暂停（等待移除），面板 /api/flows/pause 读写
+            self._wait_if_paused(pkg, label="App %s 任务开始前" % pkg)
             if not enabled:
                 log.warning("[flow_pipeline] App %s 无可启用任务，跳过", pkg)
                 return
@@ -155,8 +158,33 @@ class FlowPipeline:
             log.error("[flow_pipeline] App %s 执行异常：%s", pkg, e)
             add_failure(pkg, ["?"], "执行异常: %s" % e, pipeline="flow")
 
+    _PAUSE_FLAG = None  # 类级：state/pause.flag 路径（init 时赋值）
+
+    def _pause_flag_path(self):
+        import os as _os
+        return _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                             "state", "pause.flag")
+
+    def _wait_if_paused(self, pkg, label=""):
+        """71 轮：子进程流水线暂停（MVP=任务边界）。state/pause.flag 存在时阻塞等待，
+        每 2s 轮询；移除后继续。写等待日志（节流）。"""
+        import os as _os, time as _time
+        flag = self._pause_flag_path()
+        if not _os.path.isfile(flag):
+            return
+        log.warning("[flow_pipeline] ⏸ 检测到暂停标志（%s），%s：等待继续指令…", flag, label)
+        waited = 0
+        while _os.path.isfile(flag):
+            _time.sleep(2)
+            waited += 2
+            if waited % 30 == 0:
+                log.warning("[flow_pipeline] ⏸ 流水线已暂停 %d 秒（移除 state/pause.flag 或控制台点「继续」恢复）", waited)
+        log.warning("[flow_pipeline] ▶ 暂停解除，继续执行")
+
     def _run_task(self, pkg, task_meta):
         task_id = task_meta["id"]
+        # 71 轮：每个子任务边界也检查暂停（App 内多任务时逐任务可停）
+        self._wait_if_paused(pkg, label="任务「%s」开始前" % task_meta.get("name", task_id))
         name = task_meta.get("name", task_id)
         flow = task_load(pkg, task_id)
         if flow is None:

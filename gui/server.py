@@ -946,13 +946,9 @@ def mumu_adb_connect():
 
 # 已知应用名映射（避免包名末段无法识别；category=game 仅限确认的游戏，未知一律 app 不误判）
 APP_NAME_MAP = {
-    "com.leiyan.mdjl.an": {"name": "锚点降临", "category": "game"},
+    # 发布版仅保留公知应用示例；私有应用名映射不入公开仓库（同步主项目 server.py 时须保留本清洗）
     "com.bilibili.azurlane": {"name": "碧蓝航线", "category": "game"},
-    "com.feimo.hazeworld.mumu": {"name": "灰烬世界", "category": "game"},
-    "com.neversoft.rpg.erolabs": {"name": "Cherry Tale", "category": "game"},
     "com.zlongame.phoenix": {"name": "Phoenix", "category": "game"},
-    "com.wn.app.np": {"name": "NP管理器", "category": "app"},
-    "com.cjtec.uncompress": {"name": "解压工具", "category": "app"},
 }
 
 
@@ -1312,9 +1308,21 @@ def flow_run(pkg, mock=False, start_node_id=None, task_id=None):
                                                   ("｜从节点 %s 开始" % start_node_id) if start_node_id else "")}
 
 
+def _clear_pause_flag():
+    """72a 轮：清理子进程暂停标志（防残留 flag 卡死下一次运行的 checkpoint）"""
+    try:
+        fp = os.path.join(STATE, "pause.flag")
+        if os.path.isfile(fp):
+            os.remove(fp)
+            log.info("[server] 已清理残留暂停标志 pause.flag")
+    except OSError:
+        pass
+
+
 def flow_stop():
     """停止：优先中止 run-all（置停止标志 + 当前任务 FlowRunner.stop）。"""
     global _flow_runner
+    _clear_pause_flag()   # 72a 轮：停止时清 flag（子进程暂停残留防死锁）
     with _run_all_lock:
         if _run_all is not None and _run_all.get("running"):
             _run_all["stop"] = True
@@ -1340,7 +1348,9 @@ def flow_pause():
                 return {"ok": False, "error": "工作流已发送终止指令，无需暂停"}
             if getattr(runner, "paused", False):
                 runner.resume()
+                _clear_pause_flag()   # 72a 轮：继续时顺手清子进程 flag（防跨模式残留）
                 return {"ok": True, "msg": "已继续"}
+            _clear_pause_flag()       # 72a 轮：面板内暂停不需要 flag（防子进程残留卡 checkpoint）
             runner.pause()
             return {"ok": True, "msg": "已暂停"}
     with _flow_runner_lock:
@@ -1349,9 +1359,28 @@ def flow_pause():
                 return {"ok": False, "error": "工作流已发送终止指令，无需暂停"}
             if getattr(_flow_runner, "paused", False):
                 _flow_runner.resume()
+                _clear_pause_flag()
                 return {"ok": True, "msg": "已继续"}
+            _clear_pause_flag()
             _flow_runner.pause()
             return {"ok": True, "msg": "已暂停"}
+    # 71 轮：子进程流水线（main.py 模式）——状态文件通道暂停
+    # 子进程内 FlowPipeline/_checkpoint 每 2s/10s 轮询 state/pause.flag
+    global proc
+    with proc_lock:
+        if proc is not None and proc.poll() is None:
+            import os as _os
+            flag = _os.path.join(STATE, "pause.flag")
+            if _os.path.isfile(flag):
+                try: _os.remove(flag)
+                except OSError: pass
+                return {"ok": True, "msg": "已发送继续指令（子进程将在当前节点后恢复）"}
+            # 原子写 flag（temp+rename 防半写）
+            tmpf = flag + ".tmp"
+            with open(tmpf, "w", encoding="utf-8") as f:
+                f.write("pause")
+            _os.replace(tmpf, flag)
+            return {"ok": True, "msg": "已发送暂停指令（子进程将在当前节点完成后暂停）"}
     return {"ok": False, "error": "没有正在运行的工作流"}
 
 
@@ -1384,7 +1413,8 @@ def flow_run_status():
         return {"running": not done, "paused": getattr(r, "paused", False),
                 "steps": r.steps, "events": r.events[-50:],
                 "nodes": r.node_recs[-50:],
-                "task_id": getattr(r, "task_id", None), "task_name": getattr(r, "task_name", None)}
+                "task_id": getattr(r, "task_id", None), "task_name": getattr(r, "task_name", None),
+                "pkg": (r.flow.get("pkg") if isinstance(r.flow, dict) else None) or None}
 
 
 def flow_prints():
@@ -2005,9 +2035,18 @@ def status_payload():
         except Exception:
             exit_code = None
     ck = read_json(os.path.join(STATE, "checkpoint.a.json"))
+    # 71 轮：子进程流水线暂停态 = pause.flag 存在
+    sub_paused = running and os.path.isfile(os.path.join(STATE, "pause.flag"))
+    # 2026-10-24 UX 修复：秒退的真实报错此前只落盘 pipeline_stderr.log、无任何读取 API，
+    # 面板侧"点启动秒退零原因"。附带 stderr 尾部供前端展示。
+    stderr_tail = []
+    if not running and exit_code not in (None, 0):
+        stderr_tail = tail(os.path.join(STATE, "pipeline_stderr.log"), n=15)
     return {
         "running": running,
+        "paused": sub_paused,
         "exit_code": exit_code,
+        "stderr_tail": stderr_tail,
         "pipeline_index": ck.get("pipeline_index", 0),
         "app": ck.get("app"),
         "completed": ck.get("completed", []),
@@ -2080,6 +2119,7 @@ def _sync_pipeline_json_from_cfg():
 
 def start_pipeline():
     global proc
+    _clear_pause_flag()   # 72a 轮：启动前清残留 flag（上次暂停后未恢复的防死锁）
     with proc_lock:
         if proc is not None and proc.poll() is None:
             return {"ok": False, "msg": "流水线已在运行中"}
@@ -2163,6 +2203,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html")
         elif self.path.split("?")[0] == "/flow_editor.html":
             p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "flow_editor.html")
+            with open(p, "rb") as f:
+                self._send(200, f.read(), "text/html")
+        elif self.path.split("?")[0] == "/index_new.html":
+            p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_new.html")
             with open(p, "rb") as f:
                 self._send(200, f.read(), "text/html")
         elif self.path == "/api/pipeline":

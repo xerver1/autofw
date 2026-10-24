@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>autofw 控制台 · 新版</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23008AFF'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%23fff' font-family='sans-serif'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ================= Today 设计语言 · 设计令牌 ================= */
+:root {
+  /* 黎明底色（三层半透明铺在冷灰底上） */
+  --dawn-1: rgba(172, 205, 236, 0.45);   /* 雨蓝 */
+  --dawn-2: rgba(231, 235, 244, 0.50);   /* 月洗蓝 */
+  --dawn-3: rgba(255, 221, 185, 0.42);   /* 柔桃 */
+  --base: #EDF2F7;
+
+  /* 墨色透明度分层 */
+  --ink-85: rgba(0, 0, 0, 0.85);
+  --ink-65: rgba(0, 0, 0, 0.65);
+  --ink-60: rgba(0, 0, 0, 0.60);
+  --ink-48: rgba(0, 0, 0, 0.48);
+  --ink-38: rgba(0, 0, 0, 0.38);
+  --ink-10: rgba(0, 0, 0, 0.10);
+  --ink-05: rgba(0, 0, 0, 0.05);
+
+  /* 主题蓝（唯一强调色） */
+  --accent: #008AFF;
+  --accent-text: #005AA6;
+  --accent-soft: rgba(0, 138, 255, 0.10);
+  --link: #3DA9DA;
+
+  /* 状态色（色点/文字/底色三档） */
+  --ok: #30A46C;    --ok-soft: rgba(48, 164, 108, 0.10);
+  --warn: #FFC53D;  --warn-soft: rgba(255, 197, 61, 0.14);
+  --err: #E5484D;   --err-soft: rgba(229, 72, 77, 0.10);
+  --info: #0090FF;  --info-soft: rgba(0, 144, 255, 0.10);
+  --violet: #8B5CF6;
+
+  /* 表面 */
+  --glass-82: rgba(255, 255, 255, 0.82);
+  --glass-94: rgba(255, 255, 255, 0.94);
+  --glass-line: rgba(255, 255, 255, 0.85);
+  --glass-stroke: rgba(0, 0, 0, 0.06);
+  --shadow-near: 0 1px 2px rgba(30, 50, 80, 0.06);
+  --shadow-mid: 0 10px 24px rgba(30, 50, 80, 0.07);
+  --heavy-card: linear-gradient(168deg, #1E1E1E, #6D6D6D);
+
+  /* 圆角刻度 */
+  --r-panel: 24px; --r-card: 18px; --r-inline: 12px; --r-pill: 999px;
+
+  /* 间距刻度 */
+  --gap-section: 44px; --gap-block: 22px; --pad-panel: 28px; --gap-para: 13px;
+
+  /* 字体栈 */
+  --font: "Figtree", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+          "Noto Sans CJK SC", "Source Han Sans SC", "Hiragino Sans GB", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* 动效 */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --dur-fast: 0.16s; --dur: 0.2s;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font);
+  color: var(--ink-85);
+  background: var(--base);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* 晨光层：三层渐变 + 两团呼吸光斑 */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -5%, var(--dawn-1), transparent 65%),
+    radial-gradient(ellipse 800px 550px at 90% 15%, var(--dawn-2), transparent 60%),
+    radial-gradient(ellipse 750px 480px at 60% 105%, var(--dawn-3), transparent 62%);
+}
+.orb { position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0; }
+.orb-warm { width: 480px; height: 480px; top: -140px; right: -100px;
+  background: rgba(255, 200, 140, 0.45); animation: breathe 6s ease-in-out infinite; }
+.orb-cool { width: 420px; height: 420px; top: 180px; left: -140px;
+  background: rgba(170, 180, 235, 0.42); animation: breathe 6s ease-in-out 3s infinite; }
+@keyframes breathe { 0%, 100% { opacity: 0.7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
+
+/* 动效尊重系统设置 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+.no-anim *, .no-anim *::before, .no-anim *::after { transition: none !important; animation: none !important; }
+.no-anim .nb-block { opacity: 1 !important; }
+
+/* 入场动效 */
+.nb-block { animation: nbRise 0.9s var(--ease-out) both; }
+@keyframes nbRise { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* ================= 布局容器 ================= */
+.nb-wrap { position: relative; z-index: 1; max-width: 1060px; margin: 0 auto; padding: 0 28px 60px; }
+
+/* ================= 顶栏（浮动圆角玻璃卡：粘顶 + 四角圆角 + 描边投影） ================= */
+.nb-top {
+  position: sticky; top: 12px; z-index: 50;
+  background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(14px) saturate(160%); -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--glass-stroke); border-radius: var(--r-card);
+  box-shadow: var(--shadow-near), var(--shadow-mid);
+  margin: 14px 0 34px; padding: 12px 18px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.nb-top .nb-brand { font-weight: 700; font-size: 15px; color: var(--ink-85); letter-spacing: 0.02em; }
+.nb-top .nb-brand small { font-weight: 500; color: var(--ink-48); margin-left: 8px; font-size: 12px; }
+.nb-top .nb-links { display: flex; gap: 6px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+
+/* ================= 通用组件 ================= */
+/* 胶囊按钮 */
+.nb-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: none; cursor: pointer;
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  padding: 8px 18px; border-radius: var(--r-pill);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast), background var(--dur-fast);
+}
+.nb-btn:active { transform: scale(0.98); }
+.nb-btn:disabled { opacity: 0.4; cursor: default; }
+.nb-btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-near); }
+.nb-btn-primary:hover:not(:disabled) { background: var(--accent-text); box-shadow: var(--shadow-mid); }
+.nb-btn-ghost { background: var(--glass-82); color: var(--ink-65); border: 1px solid var(--glass-stroke); }
+.nb-btn-ghost:hover:not(:disabled) { background: var(--glass-94); color: var(--ink-85); }
+.nb-btn-danger { background: transparent; color: var(--err); border: 1px solid rgba(229, 72, 77, 0.3); }
+.nb-btn-danger:hover:not(:disabled) { background: var(--err-soft); }
+/* 键盘可达性：统一焦点环（此前仅输入框改边框色，按钮无焦点样式） */
+button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* 白玻璃卡片 */
+.nb-card {
+  background: var(--glass-82); border: 1px solid var(--glass-line);
+  border-radius: var(--r-card); box-shadow: var(--shadow-near), var(--shadow-mid);
+  padding: var(--pad-panel); margin-bottom: var(--gap-section);
+}
+.nb-card h3 { font-size: 14px; font-weight: 700; color: var(--ink-85); margin-bottom: var(--gap-para); letter-spacing: 0.02em; }
+.nb-card .nb-sub { font-size: 13px; color: var(--ink-60); margin-bottom: var(--gap-para); }
+
+/* 唯一的重卡（炭灰金属渐变） */
+.nb-heavy {
+  background: var(--heavy-card); color: #fff; border-radius: var(--r-card);
+  padding: var(--pad-panel); margin-bottom: var(--gap-section);
+}
+.nb-heavy .nb-heavy-title { font-size: 12px; color: rgba(255,255,255,0.6); letter-spacing: 0.08em; margin-bottom: 8px; }
+.nb-heavy .nb-heavy-value { font-size: 26px; font-weight: 700; }
+.nb-heavy .nb-heavy-sub { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 6px; }
+
+/* 状态行 */
+.nb-status {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--glass-82); border: 1px solid var(--glass-line);
+  border-radius: var(--r-pill); padding: 10px 20px; margin-bottom: var(--gap-section);
+  box-shadow: var(--shadow-near);
+}
+.nb-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.nb-dot.run { background: var(--ok); }
+.nb-dot.stop { background: var(--ink-38); }
+.nb-dot.paused { background: var(--warn); }
+.nb-text { font-weight: 600; color: var(--ink-85); font-size: 14px; }
+.nb-detail { color: var(--ink-60); font-size: 13px; }
+.nb-badge {
+  font-size: 12px; padding: 3px 12px; border-radius: var(--r-pill);
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 600;
+  cursor: pointer; border: none;
+}
+.nb-badge:hover { background: rgba(0, 138, 255, 0.18); }
+
+/* 键值行 */
+.nb-kv { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--ink-05); }
+.nb-kv:last-child { border-bottom: none; }
+.nb-kv .k { color: var(--ink-60); font-size: 13px; }
+.nb-kv .v { color: var(--ink-85); font-size: 13px; font-weight: 600; }
+.nb-kv .v.acc { color: var(--accent-text); }
+
+/* 提示条（左侧细线） */
+.nb-note { border-left: 3px solid var(--ink-10); padding: 6px 12px;
+  font-size: 13px; color: var(--ink-60); margin: var(--gap-para) 0;
+  background: var(--ink-05); border-radius: 0 var(--r-inline) var(--r-inline) 0; }
+
+/* App 行（清单式） */
+.nb-app-row { border-radius: var(--r-card); overflow: hidden; }
+.nb-app-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--glass-94); border-radius: var(--r-inline);
+  border: 1px solid var(--glass-stroke); margin-bottom: 6px; transition: background var(--dur-fast); }
+.nb-app-head:hover { background: rgba(255,255,255,0.97); }
+.nb-app-name { font-weight: 600; color: var(--ink-85); font-size: 14px; }
+.nb-app-pkg { font-size: 12px; color: var(--ink-48); font-family: var(--mono); }
+.nb-task-list { padding: 4px 8px 10px 16px; }
+.nb-task-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-radius: var(--r-inline); transition: background var(--dur-fast); position: relative; }
+.nb-task-row:hover { background: rgba(255,255,255,0.75); }
+.nb-task-row.dragging { opacity: 0.4; }
+.nb-task-row .nb-task-name { flex: 1; font-size: 13px; color: var(--ink-85); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-grip { color: var(--ink-38); cursor: grab; display: inline-flex; padding: 2px; opacity: 0.6; }
+.nb-task-row:hover .nb-grip { opacity: 1; }
+.nb-task-ops { display: flex; gap: 2px; }
+.nb-op { display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px; border: none;
+  background: transparent; color: var(--ink-48); cursor: pointer; text-decoration: none;
+  transition: background var(--dur-fast), color var(--dur-fast); }
+.nb-op:hover { background: rgba(0,0,0,0.06); color: var(--ink-85); }
+.nb-op.danger:hover { background: var(--err-soft); color: var(--err); }
+.nb-run-btn { padding: 6px 14px; border-radius: var(--r-pill); border: none; cursor: pointer;
+  font-family: var(--font); font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; transition: all var(--dur-fast); }
+.nb-run-btn:hover:not(:disabled) { background: var(--accent-text); }
+.nb-run-btn:disabled { opacity: 0.5; cursor: default; }
+.nb-run-btn.running { background: var(--warn-soft); color: var(--ink-65); }
+
+/* 复选框 */
+.nb-chk { position: relative; display: inline-flex; cursor: pointer; flex: none; }
+.nb-chk input { position: absolute; opacity: 0; pointer-events: none; }
+.nb-chk .nb-box { width: 17px; height: 17px; border: 1.5px solid var(--ink-38); border-radius: 5px;
+  transition: all var(--dur-fast); display: inline-flex; align-items: center; justify-content: center; }
+.nb-chk input:checked + .nb-box { background: var(--accent); border-color: var(--accent); }
+.nb-chk input:checked + .nb-box::after { content: ""; width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+
+/* ---- 旧类名映射（JS 生成 DOM 使用旧类名，这里覆盖为新视觉） ---- */
+.chk { position: relative; display: inline-flex; cursor: pointer; flex: none; }
+.chk input { position: absolute; opacity: 0; pointer-events: none; }
+.chk .box { width: 17px; height: 17px; border: 1.5px solid var(--ink-38); border-radius: 5px;
+  transition: all var(--dur-fast); display: inline-flex; align-items: center; justify-content: center; }
+.chk input:checked + .box { background: var(--accent); border-color: var(--accent); }
+.chk input:checked + .box::after { content: ""; width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.app-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--glass-94); border-radius: var(--r-inline);
+  border: 1px solid var(--glass-stroke); margin-bottom: 6px; transition: background var(--dur-fast); }
+.app-head:hover { background: rgba(255,255,255,0.97); }
+.caret-btn { border: none; background: transparent; color: var(--ink-48); cursor: pointer;
+  width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center;
+  justify-content: center; transition: all var(--dur-fast); padding: 0; }
+.caret-btn:hover { background: rgba(0,0,0,0.06); color: var(--ink-85); }
+.caret-btn svg { transition: transform var(--dur-fast); }
+.app-row.open .caret-btn:not(.plus-btn) svg { transform: rotate(180deg); }
+.app-row:not(.open) .plus-btn { display: none; }
+.plus-btn:hover { color: var(--accent); }
+/* 展开区：grid 行高动画（收起即隐藏；修“展开后无法收起”） */
+.tasks-wrap { display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-fast) var(--ease-out); }
+.app-row.open .tasks-wrap { grid-template-rows: 1fr; }
+.tasks-inner { overflow: hidden; min-height: 0; }
+.task-list { padding: 4px 8px 10px 16px; display: flex; flex-direction: column; gap: 3px; }
+.app-id { min-width: 0; }
+.app-name { font-weight: 600; color: var(--ink-85); font-size: 14px; }
+.app-pkg { font-size: 12px; color: var(--ink-48); font-family: var(--mono); }
+.task-count { font-size: 12px; color: var(--ink-48); }
+.app-layer-hint { font-size: 12px; color: var(--ink-48); margin: var(--gap-para) 0;
+  padding: 8px 12px; background: var(--ink-05); border-radius: var(--r-inline);
+  border-left: 3px solid var(--accent); }
+.ops { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.task-ops { display: flex; gap: 2px; }
+.runfrom-text { padding: 3px 10px !important; font-size: 12px !important; white-space: nowrap; }
+.run-btn { padding: 6px 14px; border-radius: var(--r-pill); border: none; cursor: pointer;
+  font-family: var(--font); font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; transition: all var(--dur-fast); }
+.run-btn:hover:not(:disabled) { background: var(--accent-text); }
+.run-btn:disabled { opacity: 0.5; cursor: default; }
+.run-btn.running { background: var(--warn-soft); color: var(--ink-65); }
+.flow-link { text-decoration: none; }
+.app-run-btn { padding: 6px 14px; border-radius: var(--r-pill); border: none; cursor: pointer;
+  font-family: var(--font); font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; transition: all var(--dur-fast); }
+.app-run-btn:hover:not(:disabled) { background: var(--accent-text); }
+.app-run-btn:disabled { opacity: 0.5; cursor: default; }
+.app-run-btn.running { background: var(--warn-soft); color: var(--ink-65); }
+.app-del-btn { margin-left: 8px; order: 99; }             /* P2-2：删除永远在最右，防误点 */
+.follow-link { order: 90; }                                  /* P2-2：查看画布在删除之前 */
+.flow-link { order: 20; }                                    /* 76：图形化编排归位右侧控件组（原漏设 order 掉回 0） */
+.task-count { order: 5; margin-left: auto; }                 /* 76：右侧控件组整体右对齐（auto 吃掉中间空白） */
+.app-run-btn { order: 10; }
+.app-layer-note { font-size: 12px; color: var(--ink-48); margin: 6px 0; }
+.empty { color: var(--ink-48); font-size: 13px; text-align: center; padding: 16px; }
+.add-row { padding: 6px 9px 2px; display: flex; gap: 8px; align-items: center; }
+.add-input { border: 1px solid var(--ink-10); border-radius: var(--r-pill); padding: 6px 14px;
+  font-size: 13px; font-family: var(--font); color: var(--ink-85); background: var(--glass-82);
+  outline: none; flex: 1; }
+.add-input:focus { border-color: var(--accent); }
+.setting-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; }
+.hint { font-size: 12px; color: var(--ink-48); }
+.t { padding: 2px 0; opacity: 1; transition: opacity 0.5s; }
+.toast-wrap { position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  z-index: 200; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.toast-wrap .t { background: var(--ink-85); color: #fff; padding: 10px 22px;
+  border-radius: var(--r-pill); font-size: 13px; box-shadow: var(--shadow-mid); max-width: 80vw; }
+.toast-wrap .t.err { background: var(--err); }
+.toast-wrap .t.ok { background: var(--ok); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.modal-head h3 { font-size: 15px; color: var(--ink-85); }
+.icon-btn { border: none; background: transparent; color: var(--ink-48); cursor: pointer;
+  width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center;
+  justify-content: center; }
+.icon-btn:hover { background: rgba(0,0,0,0.06); color: var(--ink-85); }
+.task-toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 0; }
+.task-toolbar .hint { margin-left: auto; }
+.task-toolbar button { border: 1px solid var(--ink-10); background: transparent;
+  color: var(--ink-65); border-radius: 8px; padding: 4px 10px; font-size: 12px;
+  cursor: pointer; font-family: inherit; transition: background var(--dur-fast), color var(--dur-fast); }
+.task-toolbar button:hover { background: rgba(0,0,0,0.05); color: var(--ink-85); }
+/* 任务行（JS 生成旧类名 → 新视觉映射；迁移时丢失导致列表崩坏） */
+.task-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-radius: var(--r-inline); position: relative;
+  transition: background var(--dur-fast), opacity var(--dur-fast); }
+.task-row:hover { background: rgba(255,255,255,0.75); }
+.task-row.dragging { opacity: 0.4; }
+.task-name { flex: 1; font-size: 13px; color: var(--ink-85); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grip { color: var(--ink-38); cursor: grab; display: inline-flex; padding: 2px;
+  opacity: 0.6; transition: opacity var(--dur-fast); }
+.task-row:hover .grip { opacity: 1; }
+.grip:active { cursor: grabbing; }
+.task-hint { color: var(--ink-48); font-size: 13px; padding: 6px 9px; }
+.task-hint.err { color: var(--err); }
+.op { display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 8px; border: none;
+  background: transparent; color: var(--ink-48); cursor: pointer; text-decoration: none;
+  transition: background var(--dur-fast), color var(--dur-fast); }
+.op:hover { background: rgba(0,0,0,0.06); color: var(--ink-85); }
+.op.danger:hover { background: var(--err-soft); color: var(--err); }
+.kv { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--ink-05); }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--ink-60); font-size: 13px; }
+.kv .v { color: var(--ink-85); font-size: 13px; font-weight: 600; }
+.kv .v.acc { color: var(--accent-text); }
+.acc { color: var(--accent-text); }
+.mumu-grid { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.mumu-main { display: flex; align-items: center; gap: 10px; }
+.mumu-sub { display: flex; gap: 14px; flex: 1; min-width: 200px; }
+.mumu-ops { display: flex; gap: 6px; }
+.mumu-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.mumu-state { font-weight: 600; color: var(--ink-85); font-size: 14px; }
+.mumu-detail { font-size: 12px; color: var(--ink-48); }
+.sd { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--ink-38); }
+.btn.sm { padding: 5px 13px; font-size: 12px; }
+.tabbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.log-filter { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+.log-filter input[type="search"] { border: 1px solid var(--ink-10); border-radius: var(--r-pill);
+  padding: 5px 12px; font-size: 13px; font-family: var(--font); color: var(--ink-85);
+  background: var(--glass-82); outline: none; width: 160px; }
+.log-filter input[type="search"]:focus { border-color: var(--accent); }
+.log-filter label { font-size: 12px; color: var(--ink-60); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.log-pause-hint { margin-left: auto; color: var(--warn); font-size: 12px; }
+.logbox { background: rgba(255,255,255,0.65); border: 1px solid var(--glass-stroke);
+  border-radius: var(--r-inline); padding: 12px; font-family: var(--mono);
+  font-size: 12px; line-height: 1.7; max-height: 320px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--ink-10) transparent; }
+.logbox .ll { padding: 1px 0; word-break: break-all; color: var(--ink-65); }
+.logbox .ll-t { color: var(--ink-48); margin-right: 8px; }
+.logbox .ll-lv { display: inline-block; min-width: 52px; margin-right: 8px; font-weight: 600; }
+.logbox .ll-lv.info { color: var(--ok); }
+.logbox .ll-lv.warning { color: var(--ink-65); }
+.logbox .ll-lv.error, .logbox .ll-lv.critical { color: var(--err); }
+.logbox .ll-cur { background: var(--accent-soft); border-radius: 4px; }
+.printbox { min-height: 120px; }
+.app-box { border-radius: var(--r-card); }
+
+/* ---- 兼容层 v2（74 轮）：JS 生成 DOM 的类名全部映射为 Today 视觉 ---- */
+/* 状态点（JS 动态设置 className = "dot run|stop"，并可能内联黄点） */
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--ink-38); }
+.dot.run { background: var(--ok); }
+.dot.stop { background: var(--ink-38); }
+.dot.paused { background: var(--warn); }
+
+/* 日志级别（JS 生成 ll-lv lv-info / lv-warning / lv-error / lv-critical） */
+.ll-src { color: var(--ink-38); margin-right: 8px; font-size: 12px; }
+.lv-info { color: var(--ok) !important; }
+.lv-warning { color: var(--ink-65) !important; }
+.lv-error, .lv-critical { color: var(--err) !important; }
+
+/* 基础按钮（.btn + 变体）——缺失会导致文字竖排破损 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid transparent; border-radius: var(--r-pill);
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  padding: 8px 16px; cursor: pointer; text-decoration: none;
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast), box-shadow var(--dur-fast);
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-text); }
+.btn.ghost { background: var(--glass-82); color: var(--ink-65); border-color: var(--glass-stroke); }
+.btn.ghost:hover:not(:disabled) { background: var(--glass-94); color: var(--ink-85); }
+.btn.danger { background: transparent; color: var(--err); border-color: rgba(229, 72, 77, 0.3); }
+.btn.danger:hover:not(:disabled) { background: var(--err-soft); }
+.btn.sm { padding: 5px 13px; font-size: 12px; }
+/* 77：App 行次级操作弱化——常态无描边灰字，hover 才显色（危险色只在交互时出现）
+   注：选择器需写足 .btn.ghost.xxx 才能压过 .btn.ghost:hover:not(:disabled) 的优先级 */
+.app-head .btn.ghost.flow-link, .app-head .btn.ghost.app-del-btn {
+  background: transparent; border-color: transparent; color: var(--ink-48);
+  padding: 5px 9px; font-weight: 500; }
+.app-head .btn.ghost.flow-link:hover, .app-head .btn.ghost.app-del-btn:hover {
+  background: rgba(0, 0, 0, 0.06); }
+.app-head .btn.ghost.flow-link:hover { color: var(--ink-85); }
+.app-head .btn.ghost.app-del-btn:hover { background: var(--err-soft); color: var(--err); }
+.warn-btn { background: var(--warn-soft) !important; color: var(--ink-65) !important; border-color: var(--warn) !important; }
+.tbtn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--glass-stroke);
+  background: var(--glass-82); color: var(--ink-65); border-radius: var(--r-pill);
+  padding: 5px 12px; font-size: 12px; font-family: var(--font); cursor: pointer; }
+
+/* 跟随链接（「查看画布」）——缺失会竖排 */
+/* 77：弱化——常态灰字无框（不再用蓝虚线+蓝底+蓝字三重强调），hover 才出蓝色 */
+.follow-link { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px;
+  font-size: 12px; color: var(--ink-48); cursor: pointer; white-space: nowrap;
+  text-decoration: none; padding: 5px 9px; border: none; border-color: transparent;
+  border-radius: var(--r-pill); background: transparent; width: auto; height: auto;
+  font-weight: 500; transition: background var(--dur-fast), color var(--dur-fast); }
+.follow-link:hover { background: rgba(0, 0, 0, 0.06); color: var(--accent-text); }
+
+/* tab（JS 依赖 .tab + .on） */
+.tab { padding: 5px 14px; border-radius: var(--r-pill); font-size: 13px; cursor: pointer;
+  color: var(--ink-48); transition: all var(--dur-fast); border: none; background: transparent;
+  font-family: var(--font); }
+.tab.on { background: var(--accent-soft); color: var(--accent-text); font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(0, 138, 255, 0.35); }
+.tab:not(.on):hover { background: var(--ink-05); color: var(--ink-85); }
+
+/* 任务行状态（74b：:has() 纯 CSS 区分停用任务，JS 零改动） */
+.task-row:has(input[type=checkbox]:not(:checked)) .task-name { color: var(--ink-48); }
+.task-row:has(input[type=checkbox]:not(:checked)) { background: rgba(0,0,0,0.015); }
+.task-row:has(input[type=checkbox]:not(:checked)) .grip { opacity: 0.3; }
+/* 任务行状态 */
+.task-row.paused { opacity: 0.55; }
+.task-row.paused .task-name { color: var(--ink-48); }
+.task-row.dragging { opacity: 0.4; }
+.rename-input { border: 1px solid var(--accent); border-radius: 8px; padding: 4px 8px;
+  font-size: 13px; font-family: var(--font); color: var(--ink-85); background: #fff; outline: none; flex: 1; }
+
+/* 待手动处理列表 */
+.fail-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--ink-05); }
+.fail-row:last-child { border-bottom: none; }
+.fmain { flex: 1; min-width: 0; }
+.fmain .ft { font-size: 13px; color: var(--ink-85); font-weight: 600; }
+.fr { font-size: 12px; color: var(--ink-48); }
+.ftag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: var(--r-pill);
+  background: var(--ink-05); color: var(--ink-60); margin: 2px 4px 0 0; }
+.fops { display: flex; gap: 6px; flex: none; }
+.hint-inline { color: var(--ink-60); font-size: 12px; }
+
+/* 扫描应用弹窗条目 */
+.scan-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: var(--r-inline); transition: background var(--dur-fast); }
+.scan-item:hover { background: rgba(255,255,255,0.85); }
+.scan-item input { flex: none; }
+.na { color: var(--ink-38); }
+.off { color: var(--ink-48); }
+
+/* 拖拽指示线 */
+.drop-line { position: fixed; height: 0; border-top: 2.5px solid var(--accent);
+  pointer-events: none; z-index: 80; display: none;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.55); }
+.drop-line::before, .drop-line::after { content: ""; position: absolute; top: -4.5px;
+  border: 5.5px solid transparent; }
+.drop-line::before { left: -2px; border-left: 8px solid var(--accent); }
+.drop-line::after { right: -2px; border-right: 8px solid var(--accent); }
+
+/* 状态徽标 */
+.nb-state-badge { display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; padding: 3px 10px; border-radius: var(--r-pill); font-weight: 600; }
+.nb-state-badge.ok { background: var(--ok-soft); color: var(--ok); }
+.nb-state-badge.warn { background: var(--warn-soft); color: var(--ink-65); }
+.nb-state-badge.err { background: var(--err-soft); color: var(--err); }
+
+/* 日志区 */
+.nb-logbox { background: rgba(255,255,255,0.65); border: 1px solid var(--glass-stroke);
+  border-radius: var(--r-inline); padding: 12px; font-family: var(--mono);
+  font-size: 12px; line-height: 1.7; max-height: 320px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--ink-10) transparent; }
+.nb-logbox .ll { padding: 1px 0; word-break: break-all; color: var(--ink-65); }
+.nb-logbox .ll-t { color: var(--ink-48); margin-right: 8px; }
+.nb-logbox .ll-lv { display: inline-block; min-width: 52px; margin-right: 8px; font-weight: 600; }
+.nb-logbox .ll-lv.info { color: var(--ok); }
+.nb-logbox .ll-lv.warning { color: var(--ink-65); }
+.nb-logbox .ll-lv.error, .nb-logbox .ll-lv.critical { color: var(--err); }
+.nb-logbox .ll-cur { background: var(--accent-soft); border-radius: 4px; }
+.nb-tabbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.nb-tab { padding: 5px 14px; border-radius: var(--r-pill); font-size: 13px;
+  cursor: pointer; color: var(--ink-48); transition: all var(--dur-fast); border: none; background: transparent;
+  font-family: var(--font); }
+.nb-tab.on { background: var(--accent); color: #fff; font-weight: 600; }
+.nb-tab:not(.on):hover { background: var(--ink-05); color: var(--ink-85); }
+.nb-filter { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+.nb-filter input[type="search"] { border: 1px solid var(--ink-10); border-radius: var(--r-pill);
+  padding: 5px 12px; font-size: 13px; font-family: var(--font); color: var(--ink-85);
+  background: var(--glass-82); outline: none; width: 160px; }
+.nb-filter input[type="search"]:focus { border-color: var(--accent); }
+.nb-filter label { font-size: 12px; color: var(--ink-60); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.nb-task-badge { display: inline-flex; font-size: 12px; padding: 3px 10px; border-radius: var(--r-pill);
+  background: rgba(139, 92, 246, 0.10); border: 1px solid rgba(139, 92, 246, 0.45);
+  color: var(--violet); font-weight: 600; }
+.nb-task-badge.paused { background: var(--warn-soft); border-color: var(--warn); color: var(--ink-65); }
+
+/* MuMu 区 */
+.nb-mumu-grid { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.nb-mumu-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.nb-mumu-state { font-weight: 600; color: var(--ink-85); font-size: 14px; }
+.nb-mumu-detail { font-size: 12px; color: var(--ink-48); }
+
+/* 提示 */
+.nb-toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+  background: var(--ink-85); color: #fff; padding: 10px 22px; border-radius: var(--r-pill);
+  font-size: 13px; z-index: 200; display: none; box-shadow: var(--shadow-mid); max-width: 80vw; }
+.nb-toast.ok { background: var(--ok); }
+.nb-toast.err { background: var(--err); }
+.nb-toast .t { padding: 2px 0; opacity: 1; transition: opacity 0.5s; }
+.nb-toast .t.ok { }
+.nb-toast .t.err { }
+
+/* 模态 */
+.nb-modal { position: fixed; inset: 0; z-index: 100; display: none;
+  align-items: center; justify-content: center; }
+.nb-modal.open { display: flex; }
+.nb-modal-mask { position: absolute; inset: 0; background: rgba(0,0,0,0.35); }
+.nb-modal-box { position: relative; background: var(--glass-94); backdrop-filter: blur(10px);
+  border-radius: var(--r-panel); padding: var(--pad-panel); width: min(480px, 92vw);
+  box-shadow: var(--shadow-mid); }
+
+/* 响应式三档 */
+@media (max-width: 900px) {
+  .nb-wrap { padding: 0 22px 48px; }
+  .nb-top { top: 10px; margin: 12px 0 28px; padding: 10px 16px; }
+  :root { --pad-panel: 22px; --gap-section: 36px; }
+}
+@media (max-width: 600px) {
+  /* 触控目标保底（原 26/28px 过小） */
+  .op { width: 34px; height: 34px; }
+  .caret-btn { width: 34px; height: 34px; }
+  .chk .box { width: 20px; height: 20px; }
+  .task-row { padding: 9px 10px; }
+  .nb-wrap { padding: 0 16px 40px; }
+  .nb-top { top: 8px; margin: 10px 0 26px; padding: 10px 14px; }
+  :root { --pad-panel: 16px; --gap-section: 30px; --r-card: 16px; }
+  .nb-top .nb-links { width: 100%; justify-content: flex-start; }
+  .nb-linkgroup { display: flex; gap: 6px; flex-wrap: nowrap; }        /* P2-6：组内不拆行 */
+  .nb-filter { margin-left: 0; width: 100%; }
+  .nb-filter input[type="search"] { width: 100%; }
+  .nb-mumu-grid { flex-direction: column; align-items: flex-start; }
+  .nb-run-controls { flex-wrap: wrap; }                               /* P2-6：窄屏可整组换行 */
+  .nb-heavy .nb-heavy-value { font-size: 20px; }
+}
+</style>
+</head>
+<body>
+<script>
+/* 尽早应用动画偏好，避免入场动画闪烁 */
+try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.documentElement.classList.add("no-anim"); } catch (e) {}
+</script>
+
+<div class="orb orb-warm"></div>
+<div class="orb orb-cool"></div>
+
+<div class="nb-wrap">
+<div class="nb-top nb-block">
+  <div class="nb-brand">autofw<small>控制台</small></div>
+  <div class="nb-links">
+    <span class="nb-linkgroup nb-nav-links">
+      <a class="nb-btn nb-btn-ghost" href="/pipeline_editor.html" target="_blank" rel="noopener">流水线编排</a>
+      <a class="nb-btn nb-btn-ghost" href="/ocr.html" target="_blank" rel="noopener" title="识别调试工具：截图文字识别 / 模板排查">OCR 调试</a>
+      <a class="nb-btn nb-btn-ghost" href="/index.html" target="_blank" rel="noopener" title="回到经典界面">经典界面</a>
+      <button id="btnSettings" class="nb-btn nb-btn-ghost" type="button" title="设置">设置</button>
+    </span>
+    <span class="nb-linkgroup nb-run-controls">
+      <button id="btnStart" class="nb-btn nb-btn-primary" type="button" title="按流水线编排顺序执行步骤">▶ 启动流水线</button>
+      <button id="btnPause" class="nb-btn nb-btn-ghost" type="button" title="暂停/继续面板内运行"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><rect x="4" y="3.5" width="3" height="9" rx="1" fill="currentColor"/><rect x="9" y="3.5" width="3" height="9" rx="1" fill="currentColor"/></svg>暂停</button>
+      <button id="btnStop" class="nb-btn nb-btn-danger" type="button" title="停止流水线或批量执行"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.6" fill="currentColor"/></svg>停止</button>
+    </span>
+  </div>
+</div>
+
+<div class="nb-status nb-block">
+  <span class="dot stop" id="dot"></span>
+  <span class="nb-text" id="stateText">连接中…</span>
+  <span class="nb-detail" id="stateDetail"></span>
+  <span class="nb-badge" id="runAllBadge" hidden></span>
+  <button id="btnRefreshStatus" class="nb-btn nb-btn-ghost" type="button" title="立即刷新" style="margin-left:auto">刷新</button>
+</div>
+
+<div class="nb-heavy nb-block">
+  <div class="nb-heavy-title">当前运行</div>
+  <div class="nb-heavy-value" id="heavyTask">—</div>
+  <div class="nb-heavy-sub"><span id="heavyIdle" hidden>空闲——点「启动流水线」后在此查看进度</span><span id="heavyRun">已完成 <b id="doneCount">0</b> / 共 <b id="heavyTotal">—</b> 项 · 进度 <b id="heavyPct">—</b></span></div>
+</div>
+
+<div class="nb-card nb-block">
+  <h3>运行详情</h3>
+  <div class="nb-kv"><span class="k">流水线索引</span><span class="v" id="idx">—</span></div>
+  <div class="nb-kv"><span class="k">当前 App</span><span class="v" id="app">—</span></div>
+  <div class="nb-kv"><span class="k">当前节点</span><span class="v" id="liveNode">—</span></div>
+  <button id="btnGoLive" class="nb-btn nb-btn-ghost" type="button" hidden
+    title="在新窗口打开该任务的画布，并自动定位/跟随运行中的节点" style="margin-top:10px">⤢ 跳转到运行中任务的画布</button>
+</div>
+
+<div class="nb-card nb-block">
+  <h3>待手动处理 <span style="color:var(--err);font-size:12px" id="failCount"></span><button class="nb-btn nb-btn-ghost" id="btnClearFail" type="button" title="将全部待处理记录标记为已处理" style="margin-left:8px;padding:4px 12px">清理信息</button></h3>
+  <div id="failures"><span class="nb-sub">加载中…</span></div>
+</div>
+
+<div class="nb-card nb-block">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:var(--gap-para)">
+    <h3 style="margin-bottom:0">已配置自动化 App</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="nb-sub" id="appCount"></span>
+      <button class="nb-btn nb-btn-ghost" id="btnScanApps" type="button" title="扫描 MuMu 模拟器中已安装的应用">扫描设备应用</button>
+      <a class="nb-btn nb-btn-ghost" href="/pipeline_editor.html" target="_blank" rel="noopener">打开编排面板</a>
+    </div>
+  </div>
+  <div class="nb-note">App 勾选 = 启动流水线时是否包含该 App；任务勾选 =「运行自动化」时是否执行。</div>
+  <div class="nb-app-row" id="appList"></div>
+  <div class="nb-sub" id="appEmpty" hidden style="text-align:center;padding:20px">尚未配置自动化 App — 在「流水线编排」中添加后，可在此处管理每个 App 的子任务。</div>
+</div>
+
+<div class="nb-card nb-block">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:var(--gap-para)">
+    <h3 style="margin-bottom:0">MuMu 模拟器状态</h3>
+    <button id="btnRefreshMumu" class="nb-btn nb-btn-ghost">刷新状态</button>
+  </div>
+  <div class="nb-mumu-grid">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="nb-mumu-dot" id="mumuDot" style="background:var(--ink-38)"></span>
+      <div>
+        <div class="nb-mumu-state" id="mumuState">检测中…</div>
+        <div class="nb-mumu-detail" id="mumuDetail"></div>
+      </div>
+    </div>
+    <div class="nb-kv" style="flex:1;min-width:180px"><span class="k">Android</span><span class="v"><i class="sd" id="mumuAndroidDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;background:var(--ink-38)"></i><span id="mumuAndroid">—</span></span></div>
+    <div class="nb-kv" style="flex:1;min-width:180px"><span class="k">ADB</span><span class="v"><i class="sd" id="mumuAdbDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;background:var(--ink-38)"></i><span id="mumuAdb">—</span></span></div>
+    <div style="display:flex;gap:6px">
+      <button id="btnMumuStart" class="nb-btn nb-btn-primary">启动</button>
+      <button id="btnMumuStop" class="nb-btn nb-btn-danger">关闭</button>
+      <button id="btnMumuAdb" class="nb-btn nb-btn-ghost" title="模拟器在跑但 adb 失联时，一键重连 ADB">连接 adb</button>
+    </div>
+  </div>
+</div>
+
+<div class="nb-card nb-block">
+  <h3>运行日志</h3>
+  <div class="nb-tabbar">
+    <button class="tab on" data-tab="print">打印输出</button>
+    <button class="tab" data-tab="app">运行日志 app.log</button>
+    <div class="nb-filter">
+      <input type="search" id="logFilterQ" placeholder="过滤关键字…" aria-label="日志关键字过滤" />
+      <label title="仅显示 ERROR/CRITICAL"><input type="checkbox" id="logFilterErr" /> 只看错误</label>
+    </div>
+    <span class="nb-sub" id="logPauseHint" hidden>⏸ 已暂停刷新（选中文本）</span>
+    <span class="nb-task-badge" id="curTaskBadge" hidden title="日志对应的当前运行子任务"></span>
+  </div>
+  <div class="nb-logbox logbox" id="log"></div>
+</div>
+
+<div style="text-align:center;padding:20px 0 10px" class="nb-sub">autofw · 新版控制台 · 状态每 3 秒刷新</div>
+</div>
+
+<!-- 设置弹窗 -->
+<div class="nb-modal" id="settingsModal">
+  <div class="nb-modal-mask" id="nbModalMask"></div>
+  <div class="nb-modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="font-size:15px;color:var(--ink-85)">设置</h3>
+      <button class="nb-btn nb-btn-ghost" id="btnCloseSettings" title="关闭">关闭</button>
+    </div>
+    <div id="settingsBody">
+      <label class="nb-chk" style="gap:8px;font-size:13px;color:var(--ink-85);cursor:pointer">
+        <input type="checkbox" id="chkAnim" checked>
+        <span class="nb-box"></span>
+        <span>启用界面动画</span>
+      </label>
+      <p style="font-size:12px;color:var(--ink-48);margin-top:10px">关闭后禁用所有过渡与加载动画（选择保存在本地，刷新页面后仍生效）。</p>
+    </div>
+  </div>
+</div>
+
+<div class="nb-toast" id="toast"></div>
+
+<script>
+/* ================= 工具 ================= */
+let curTab = "print";
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function toast(msg, kind) {
+  const box = $("toast");
+  const t = document.createElement("div");
+  t.className = "t" + (kind ? " " + kind : "");
+  t.textContent = msg;
+  box.appendChild(t);
+  /* P1：错误信息停留更久，便于阅读 */
+  const hold = kind === "err" ? 6000 : 2600;
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; }, hold);
+  setTimeout(() => t.remove(), hold + 400);
+}
+
+/* fetch 封装：JSON + 超时（AbortController） */
+async function api(path, opts, timeoutMs) {
+  const ms = timeoutMs || 6000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const init = Object.assign({ signal: ctrl.signal }, opts || {});
+    if (init.body && !init.headers) init.headers = { "Content-Type": "application/json" };
+    const r = await fetch(path, init);
+    const ct = r.headers.get("content-type") || "";
+    if (ct.indexOf("json") >= 0) return r.json();
+    return { ok: false, error: "非 JSON 响应 (" + r.status + ")" };
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("请求超时");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* 内联 SVG 图标（CSS 图标，不使用 emoji） */
+const ICON = {
+  caret: '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.6 6l4.4 4.4L12.4 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  grip: '<svg viewBox="0 0 10 22" width="10" height="22" aria-hidden="true"><circle cx="3" cy="4" r="1.25" fill="currentColor"/><circle cx="7" cy="4" r="1.25" fill="currentColor"/><circle cx="3" cy="11" r="1.25" fill="currentColor"/><circle cx="7" cy="11" r="1.25" fill="currentColor"/><circle cx="3" cy="18" r="1.25" fill="currentColor"/><circle cx="7" cy="18" r="1.25" fill="currentColor"/></svg>',
+  open: '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M7 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9M10 2.5h3.5V6M13.5 2.5L8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/></svg>',
+  plus: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  play: '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M5.2 3.4v9.2L13 8 5.2 3.4z" fill="currentColor"/></svg>'
+};
+
+/* ================= 动画偏好 ================= */
+function applyAnimPref() {
+  let on = true;
+  try { on = localStorage.getItem("autofw_anim_enabled") !== "0"; } catch (e) {}
+  document.documentElement.classList.toggle("no-anim", !on);
+  return on;
+}
+function openSettings() { $("chkAnim").checked = applyAnimPref(); $("settingsModal").classList.add("open"); document.body.style.overflow = "hidden"; }
+function closeSettings() { $("settingsModal").classList.remove("open"); document.body.style.overflow = ""; }
+
+/* ================= 运行日志渲染（R13：进度直观 + 复制不被刷新打断） ================= */
+const logState = { lastKey: "", raw: [] };
+const appNameMap = new Map();   /* pkg -> 显示名（renderApps 维护，进度条用） */
+const logFilter = { q: "", errOnly: false };
+function applyLogFilters(logs) {
+  let out = logs || [];
+  if (logFilter.errOnly) out = out.filter((line) => /\b(ERROR|CRITICAL)\b/i.test(line) || /失败|error|Failed/i.test(line));
+  const q = (logFilter.q || "").trim().toLowerCase();
+  if (q) out = out.filter((line) => String(line).toLowerCase().indexOf(q) >= 0);
+  return out;
+}
+function syncRunAllButtons() {
+  document.querySelectorAll(".app-run-btn").forEach((btn) => {
+    const pkg = btn.closest(".app-row") && btn.closest(".app-row").dataset.pkg;
+    const busy = !!(runAllUi && runAllUi.running);
+    const same = busy && runAllUi.pkg === pkg;
+    if (same) {
+      btn.disabled = true;
+      btn.classList.add("running");
+      btn.textContent = "运行中 " + (runAllUi.taskIndex || 0) + "/" + (runAllUi.total || 0) + "…";
+      // 71 轮：运行中可跳转对应画布跟随（按钮后追加链接，避免重建按钮本身）
+      if (!btn.dataset.followBound) {
+        btn.dataset.followBound = "1";
+        const a = document.createElement("a");
+        a.className = "op follow-link";
+        a.title = "打开该 App 画布，跟随运行进度";
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.innerHTML = ICON.open + " 查看画布";
+        a.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          a.href = "/flow_editor.html?pkg=" + encodeURIComponent(pkg) +
+            (runAllUi.taskId ? "&task=" + encodeURIComponent(runAllUi.taskId) : "") + "&follow=1&from=new";
+        });
+        btn.parentElement.appendChild(a);
+      }
+      const fl = btn.parentElement.querySelector(".follow-link");
+      if (fl) fl.href = "/flow_editor.html?pkg=" + encodeURIComponent(pkg) +
+        (runAllUi.taskId ? "&task=" + encodeURIComponent(runAllUi.taskId) : "") + "&follow=1&from=new";
+    } else if (busy) {
+      btn.disabled = true;
+      btn.classList.remove("running");
+      if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+      btn.textContent = "流水线占用中";
+    } else {
+      btn.disabled = false;
+      btn.classList.remove("running");
+      if (btn.dataset.orig) { btn.textContent = btn.dataset.orig; }
+      else if (!/运行自动化/.test(btn.textContent || "")) btn.textContent = "▶ 运行自动化";
+    }
+  });
+}
+
+function logSelectionActive() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return false;
+  return $("log").contains(sel.anchorNode);
+}
+
+function fmtIntentLine(line) {
+  /* intent.log 是 epoch 时间戳：1786772508.847 xxx → HH:MM:SS xxx */
+  const m = line.match(/^(\d{10})(?:\.\d+)?\s+(.*)$/);
+  if (!m) return line;
+  const d = new Date(Number(m[1]) * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()) + "  " + m[2];
+}
+
+function renderLog(logs) {
+  const box = $("log");
+  logState.raw = logs || [];
+  const filtered = applyLogFilters(logState.raw);
+  const key = curTab + "\u0001" + logFilter.q + "\u0001" + logFilter.errOnly + "\u0001" + (filtered.length ? filtered.join("\n") : "");
+  if (key === logState.lastKey) return;
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.textContent = "";
+  const filterOn = !!(logFilter.q || logFilter.errOnly);
+  if (!filtered.length) {
+    box.textContent = filterOn
+      ? ("（无匹配日志" + (logFilter.errOnly ? " · 只看错误" : "") + (logFilter.q ? " · " + logFilter.q : "") + "）")
+      : (curTab === "print" ? "（暂无打印输出）" : "（暂无日志）");
+    logState.lastKey = key;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  filtered.forEach((raw, i) => {
+    const text = raw;
+    const div = document.createElement("div");
+    div.className = "ll" + (i === filtered.length - 1 ? " ll-cur" : "");
+    const m = text.match(/^(\S+ \S+) (\S+) (INFO|WARNING|ERROR|CRITICAL|DEBUG)\s+(.*)$/);
+    if (m) {
+      // P2-4：补组件名（multi-App 混跑时可分辨日志来源）
+      div.innerHTML = '<span class="ll-t">' + esc(m[1]) + '</span>' +
+        '<span class="ll-lv lv-' + m[3].toLowerCase() + '">' + esc(m[3]) + '</span>' +
+        '<span class="ll-src">' + esc(m[2]) + '</span>' +
+        '<span class="ll-m">' + esc(m[4]) + '</span>';
+    } else {
+      div.textContent = text;
+    }
+    frag.appendChild(div);
+  });
+  box.appendChild(frag);
+  logState.lastKey = key;
+  if (stick) box.scrollTop = box.scrollHeight;
+}
+
+document.addEventListener("selectionchange", () => {
+  $("logPauseHint").hidden = !logSelectionActive();
+});
+
+/* ================= 状态行（3 秒轮询） ================= */
+const runAllUi = { pkg: null, running: false, taskIndex: 0, total: 0, taskId: null };
+
+async function refresh() {
+  try {
+    const s = await api("/api/status");
+    const run = s.running;
+    let ra = null;
+    try { ra = await api("/api/flows/runstatus", {}, 4000); } catch (e0) { ra = null; }
+    const raRun = !!(ra && ra.running && ra.mode === "run_all");   // 72b：仅 run-all（单任务运行走下方独立分支）
+    runAllUi.running = raRun;
+    runAllUi.pkg = raRun ? ra.pkg : null;
+    runAllUi.taskIndex = ra ? (ra.task_index || 0) : 0;
+    runAllUi.total = ra ? (ra.total || 0) : 0;
+    runAllUi.taskId = raRun ? (ra.task_id || null) : null;   // 71 轮：画布跳转用
+    const anyRun = run || raRun;
+    const subOnly = run && !raRun;   // main.py 子进程流水线模式（71 轮）
+    const subPaused = !!(run && !raRun && s.paused);   // 71 轮：子进程暂停态（提前定义防 TDZ）
+    $("dot").className = "dot " + (anyRun ? "run" : "stop");
+    $("dot").style.background = ((raRun && ra.paused) || (run && !raRun && s.paused)) ? "#D98A2B" : "";   // 已暂停黄点（面板内/子进程）
+    const singleRun = !!(ra && ra.running && !ra.mode);   // 72b：单任务运行
+    $("stateText").textContent = run ? "运行中" : (raRun ? "批量执行中" : (singleRun ? "运行中（任务）" : "已停止"));
+    const badge = $("runAllBadge");
+    if (raRun && badge) {
+      badge.hidden = false;
+      const label = (ra.pkg && appNameMap.get(ra.pkg)) || ra.pkg || "";
+      badge.textContent = "run-all " + (ra.task_index || 0) + "/" + (ra.total || 0) + (label ? " · " + label : "") + (ra.task_name ? " · " + ra.task_name : "") + (ra.paused ? " · ⏸ 已暂停" : "");
+      // 71 轮：徽标可点击跳画布
+      badge.style.cursor = "pointer";
+      badge.title = "打开对应画布，跟随运行进度";
+      badge.onclick = () => window.open("/flow_editor.html?pkg=" + encodeURIComponent(ra.pkg) +
+        (ra.task_id ? "&task=" + encodeURIComponent(ra.task_id) : "") + "&follow=1&from=new", "_blank");
+    } else if (badge) {
+      badge.hidden = true;
+      badge.onclick = null;
+    }
+    // 进程已退出：显示退出码，便于排查"秒退"黑盒（exit_code=2 是 Gate 自检门拒绝启动）
+    if (!run && !raRun && s.exit_code != null) {
+      if (s.exit_code === 2) {
+        $("stateDetail").textContent = "已停止（Gate 自检门拒绝启动，见状态.log / 运行日志）";
+      } else if (s.exit_code != 0) {
+        // 2026-10-24 UX 修复：附带 stderr 最后一行，秒退原因直接可见（此前只给文件名）
+        const _se = (s.stderr_tail && s.stderr_tail.length)
+          ? String(s.stderr_tail[s.stderr_tail.length - 1] || "").slice(0, 120) : "";
+        $("stateDetail").textContent = "已停止（进程退出码 " + s.exit_code + "）" +
+          (_se ? "：" + _se : "（详见 state\\pipeline_stderr.log）");
+      } else {
+        $("stateDetail").textContent = "空闲（上次正常结束）";
+      }
+    } else if (subOnly) {
+      $("stateDetail").textContent = subPaused ? "⏸ 已暂停——子进程流水线（点「继续」恢复）" : "正在执行流水线" + (s.app ? "：" + s.app : "");
+    } else if (raRun) {
+      $("stateDetail").textContent = (ra.paused ? "⏸ 已暂停——" : "正在执行 ") + (ra.task_name || ra.task_id || "任务") + "（" + (ra.task_index || 0) + "/" + (ra.total || 0) + "）" + (ra.paused ? "（点「继续」恢复）" : "");
+    } else if (ra && ra.running && !ra.mode) {
+      // 72b 轮：单任务运行（编辑器发起，runstatus 单任务分支无 mode）——控制台可见 + 画布跳转
+      const stPkg = ra && ra.pkg ? ra.pkg : null;
+      const stTask = ra && ra.task_id ? ra.task_id : null;
+      const appLabel = stPkg ? ((appNameMap.get(stPkg)) || stPkg) : "";
+      $("stateDetail").innerHTML = "运行中：" + esc(appLabel) + (ra && ra.task_name ? " · " + esc(ra.task_name) : "") +
+        ' <a class="follow-link" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(stPkg || "") +
+        (stTask ? "&task=" + encodeURIComponent(stTask) : "") + '&follow=1&from=new">⤢ 查看画布</a>';
+    } else {
+      $("stateDetail").textContent = run && s.app ? "当前任务: " + s.app : "空闲";
+    }
+    $("idx").textContent = s.pipeline_index;
+    if (run && s.app) {
+      $("app").textContent = s.app || "—";
+    } else if (raRun && ra.pkg) {
+      $("app").textContent = (appNameMap.get(ra.pkg) || ra.pkg) + "（run-all）";
+    } else if (s.app) {
+      $("app").textContent = "—（上次：" + (appNameMap.get(s.app) || s.app) + "）";
+    } else {
+      $("app").textContent = "—";
+    }
+    const done = s.completed || [];
+    const _doneN = raRun ? ((ra.done && ra.done.length) || 0) : done.length;
+    $("doneCount").textContent = (_doneN == null ? "—" : _doneN);
+    // P2-1：重卡展示当前任务/总数/进度（数据缺失一律显示 — 不裸渲染 undefined）
+    const _totalN = raRun && ra && ra.total ? ra.total : null;
+    const _curTask = raRun && ra ? (ra.task_name || ra.task_id || "—") : (run && s.app ? s.app : "—");
+    const _ht = $("heavyTask"); if (_ht) _ht.textContent = _curTask || "—";
+    const _htt = $("heavyTotal"); if (_htt) _htt.textContent = (_totalN == null ? "—" : _totalN);
+    const _hp = $("heavyPct");
+    if (_hp) _hp.textContent = (_totalN ? Math.round((_doneN / _totalN) * 100) + "%" : "—");
+    // 2026-10-24 UX 修复：空闲时进度行改人话（"共 — 项"的破折号易误读成"一"）
+    if ($("heavyIdle")) $("heavyIdle").hidden = !!(run || raRun);
+    if ($("heavyRun")) $("heavyRun").hidden = !(run || raRun);
+    // 61 轮：流水线实时任务/节点（/api/status.live ← state/pipeline_live.json）+ 跳转画布
+    const lv = s.live || {};
+    const lt = $("liveTask"), ln = $("liveNode"), gb = $("btnGoLive");
+    if (lt) lt.textContent = lv.running && lv.task_name ? lv.task_name : "—";
+    if (ln) ln.textContent = lv.running
+      ? (lv.node_name ? lv.node_name + "（" + (lv.node_type || "?") + "）" : "等待节点…")
+      : "—";
+    if (lt && raRun && !(lv.running && lv.task_name)) lt.textContent = ra.task_name || ra.task_id || "—";
+    if (gb) {
+      const showLive = !!(lv.running && lv.pkg && lv.task_id && lv.node_id);
+      gb.hidden = !showLive;
+      gb.style.display = showLive ? "" : "none";
+      if (showLive) gb.onclick = () => window.open("/flow_editor.html?pkg=" +
+        encodeURIComponent(lv.pkg) + "&task=" + encodeURIComponent(lv.task_id) +
+        "&focus=1&from=new", "_blank");
+    }
+    /* 用户正在选中日志文本时暂停刷新：避免 DOM 被替换导致选区乱跳、无法复制 */
+    if (!logSelectionActive()) {
+      // 打印输出 tab 显示 prints.log（打印节点消息），运行日志 tab 显示 app.log
+      renderLog(curTab === "print" ? s.print_tail : s.log_tail);
+    }
+    // 71 轮：日志区「当前子任务」徽标——告诉用户下面这些日志属于哪个子任务
+    const tb = $("curTaskBadge");
+    if (tb) {
+      if (raRun) {
+        const tName = ra.task_name || ra.task_id || "—";
+        tb.textContent = "当前子任务：" + tName + (ra.total ? "（" + ((ra.task_index || 0) + 1) + "/" + ra.total + "）" : "") + (ra.paused ? " ⏸ 已暂停" : "");
+        tb.classList.toggle("paused", !!ra.paused);
+        tb.hidden = false;
+      } else if (run && s.app) {
+        tb.textContent = "当前子任务：" + (s.app || "—") + "（子进程流水线）";
+        tb.classList.toggle("paused", false);
+        tb.hidden = false;
+      } else {
+        tb.hidden = true;
+      }
+    }
+    $("btnStart").disabled = anyRun;
+    $("btnStop").disabled = !anyRun;
+    // 70 轮 + 71 轮：暂停按钮状态机——面板内运行（raRun）与子进程流水线（run）都支持
+    // （71 轮：子进程走 state/pause.flag 文件通道，/api/flows/pause 内部自动分流）
+    const raPaused = !!(raRun && ra.paused);
+    const paused = raPaused || subPaused;   // subPaused 提前定义（anyRun 后）
+    const btnPause = $("btnPause");
+    if (btnPause) {
+      btnPause.disabled = !anyRun;   // 有运行就可暂停（两种模式都支持）
+      btnPause.textContent = paused ? "▶ 继续" : "⏸ 暂停";
+      btnPause.title = paused ? "继续执行（当前节点完成后恢复）"
+        : (subOnly ? "暂停子进程流水线（当前子任务完成后暂停）" : "暂停面板内运行（当前节点完成后暂停）");
+      btnPause.classList.toggle("warn-btn", paused);
+    }
+    syncRunAllButtons();
+  } catch (e) {
+    $("stateText").textContent = "面板服务连接失败";
+    $("stateDetail").textContent = "面板服务未响应：请关闭本页，重新双击 start.bat（启动记录见 logs\\startup.log）";
+  }
+}
+
+async function pipelineAction(act) {
+  const btn = act === "start" ? $("btnStart") : $("btnStop");
+  btn.disabled = true;
+  try {
+    let url = "/api/" + act;
+    if (act === "stop") {
+      /* 2026-09-30 修复：批量执行(run-all)与单任务运行跑在面板进程内线程，
+         须走 /api/flows/stop（置停止标志 + 当前任务 Runner.stop）；
+         仅 main.py 子进程流水线走 /api/stop。此前 run-all 时按「停止」
+         打到 /api/stop 被回复「流水线未在运行」，按钮表现为无效果。 */
+      let ra = null;
+      try { ra = await api("/api/flows/runstatus", {}, 4000); } catch (e0) { ra = null; }
+      if (ra && ra.running) url = "/api/flows/stop";
+    }
+    const r = await api(url, { method: "POST" }, 8000);
+    if (r && r.ok === false) { toast(r.message || r.error || r.msg || "操作失败", "err"); return; }
+    $("stateDetail").textContent = r.msg || (act === "start" ? "已启动" : "已停止");
+  } catch (e) {
+    toast((act === "start" ? "启动失败：" : "停止失败：") + e.message, "err");
+  } finally {
+    setTimeout(refresh, 1500);
+  }
+}
+
+/* ================= MuMu 模拟器状态 ================= */
+let lastMumu = null;
+let mumuBusy = "";
+
+function renderMumu(m) {
+  lastMumu = m || {};
+  const s = String(m.state || "").toLowerCase();
+  let label, cls = "off", detail = m.detail || "";
+  if (["running", "started", "on"].indexOf(s) >= 0) { label = "运行中"; cls = "ok"; }
+  else if (s === "starting") { label = "启动中…"; cls = "warn"; }
+  else if (s === "stopping") { label = "关闭中…"; cls = "warn"; }
+  else if (["stopped", "stop", "off", "idle"].indexOf(s) >= 0) { label = "未运行"; cls = "off"; }
+  else if (["not_installed", "uninstalled", "missing", "not-installed", "no_install"].indexOf(s) >= 0) { label = "未安装"; cls = "err"; }
+  else if (m.android_started) { label = "运行中"; cls = "ok"; if (!detail) detail = "Android 已启动"; }
+  else if (m.detected && m.running) { label = "已启动（Android 启动中）"; cls = "warn"; }
+  else if (m.detected) { label = "已检测到"; cls = "warn"; }
+  else if (m.adb_ok) { label = "已检测到（adb 连通）"; cls = "warn"; }
+  else { label = "未检测到模拟器"; cls = "off"; }
+
+  $("mumuState").textContent = label;
+  $("mumuDot").className = "mumu-dot " + cls;
+  $("mumuDetail").textContent = detail || "";
+
+  const androidOk = !!m.android_started;
+  $("mumuAndroid").textContent = androidOk ? "已启动" : (m.detected || m.running ? "未启动" : "—");
+  $("mumuAndroidDot").className = "sd " + (androidOk ? "ok" : (m.detected || m.running ? "off" : "na"));
+  const adbOk = !!m.adb_ok;
+  $("mumuAdb").textContent = adbOk ? "已连接 127.0.0.1:16384" : "未连接";
+  $("mumuAdbDot").className = "sd " + (adbOk ? "ok" : "off");
+
+  const busyState = (s === "starting" || s === "stopping") || mumuBusy !== "";
+  const notInstalled = ["not_installed", "uninstalled", "missing", "not-installed", "no_install"].indexOf(s) >= 0;
+  $("btnMumuStart").disabled = busyState || !!m.android_started || notInstalled;
+  $("btnMumuStop").disabled = busyState || !m.android_started;
+  $("btnMumuAdb").disabled = busyState || notInstalled;
+}
+
+async function refreshOverview() {
+  try {
+    const o = await api("/api/overview", {}, 6000);
+    renderMumu(o.mumu || {});
+  } catch (e) {
+    $("mumuState").textContent = "检测失败";
+    $("mumuDetail").textContent = e.message;
+    $("mumuDot").className = "mumu-dot err";
+  }
+}
+
+async function mumuAction(act) {
+  // 2026-10-24 UX 修复：关闭模拟器是破坏性操作（中断所有运行中自动化），补二次确认
+  if (act === "stop" && !confirm("确认关闭 MuMu 模拟器？\n正在运行的自动化会被立即中断。")) return;
+  if (mumuBusy) return;
+  mumuBusy = act;
+  const isAdb = act === "adb";
+  const btn = isAdb ? $("btnMumuAdb") : (act === "start" ? $("btnMumuStart") : $("btnMumuStop"));
+  const other = isAdb ? null : (act === "start" ? $("btnMumuStop") : $("btnMumuStart"));
+  btn.disabled = true;
+  if (other) other.disabled = true;
+  const busyText = isAdb ? "连接中…" : (act === "start" ? "启动中…" : "关闭中…");
+  const idleText = isAdb ? "连接 adb" : (act === "start" ? "启动" : "关闭");
+  btn.textContent = busyText;
+  try {
+    const r = await api("/api/mumu/" + (act === "adb" ? "adb_connect" : act), { method: "POST" }, 15000);
+    if (r && r.ok === false) {
+      toast((isAdb ? "连接失败：" : (act === "start" ? "启动失败：" : "关闭失败：")) +
+            (r.detail || r.message || r.error || "未知错误"), "err");
+    } else {
+      if (r && r.state) renderMumu(Object.assign({}, lastMumu || {}, { state: r.state, detail: r.detail || "" }));
+      toast(r.detail || r.msg || (isAdb ? "连接指令已发送" : (act === "start" ? "启动指令已发送" : "关闭指令已发送")),
+            (r && r.adb_ok) || (r && r.state) ? "" : "ok");
+    }
+  } catch (e) {
+    toast((isAdb ? "连接失败：" : (act === "start" ? "启动失败：" : "关闭失败：")) + e.message, "err");
+  } finally {
+    mumuBusy = "";
+    btn.textContent = idleText;
+    renderMumu(lastMumu || {});
+    setTimeout(refreshOverview, 3000); /* 操作后 3 秒自动再探测 */
+  }
+}
+
+/* ================= 待手动处理（失败任务） ================= */
+const STATUS_LABEL = { pending: "待处理", handled: "已处理", ignored: "已忽略", retried: "已重试" };
+async function refreshFailures() {
+  try {
+    const d = await api("/api/failures", {}, 6000);
+    $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 累计 " + (d.count == null ? "—" : d.count) + "）";   /* P2-3 兜底 */
+    const clearBtn = $("btnClearFail");
+    if (clearBtn) {
+      const none = !d.failures || !d.failures.length || !(d.pending || 0);
+      clearBtn.disabled = none;
+      clearBtn.title = none ? "暂无待处理记录" : "将全部待处理记录标记为已处理（保留历史审计）";
+    }
+    const box = $("failures");
+    if (!d.failures || !d.failures.length) {
+      box.innerHTML = '<span class="empty">暂无失败任务</span>';
+      return;
+    }
+    box.innerHTML = "";
+    d.failures.slice(0, 20).forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "fail-row";
+      const tasks = Array.isArray(f.task) ? f.task.join(",") : f.task;
+      row.innerHTML =
+        '<div class="fmain">' +
+          '<span class="ftag ' + esc(f.status) + '">' + esc(STATUS_LABEL[f.status] || f.status) + '</span>' +
+          '<span class="ft">' + esc(f.time) + ' · ' + esc(f.app || "?") + ' · ' + esc(tasks) + '</span>' +
+          '<div class="fr">' + esc(f.reason || "") + '</div>' +
+        '</div>' +
+        '<div class="fops">' +
+          (f.status === "pending" ?
+            '<button class="btn sm ghost" data-a="handled">已处理</button>' +
+            '<button class="btn sm ghost" data-a="ignored">忽略</button>' +
+            '<button class="btn sm ghost" data-a="retried">重试</button>' :
+            '<span class="empty">' + esc(((f.history && f.history[f.history.length - 1]) || {}).action || "") + '</span>') +
+        '</div>';
+      row.querySelectorAll("[data-a]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          try {
+            await api("/api/failures/" + encodeURIComponent(f.id) + "/mark", {
+              method: "POST",
+              body: JSON.stringify({ action: btn.dataset.a })
+            }, 6000);
+          } catch (e) { toast("操作失败：" + e.message, "err"); }
+          refreshFailures();
+        });
+      });
+      box.appendChild(row);
+    });
+  } catch (e) {
+    $("failures").innerHTML = '<span class="empty" style="color:var(--err)">失败台账加载失败：' + esc(e.message) + "</span>";
+  }
+}
+
+/* 一键清理：把全部待处理失败记录批量标记为已处理（服务端保留审计历史） */
+$("btnClearFail").addEventListener("click", async () => {
+  if (!confirm("确认清空待手动处理列表？（全部标记为已处理，保留历史记录）")) return;
+  const btn = $("btnClearFail");
+  btn.disabled = true;
+  try {
+    const d = await api("/api/failures/clear", { method: "POST" }, 6000);
+    toast("已清理 " + (d.cleared || 0) + " 条记录", "ok");
+  } catch (e) {
+    toast("清理失败：" + e.message, "err");
+  }
+  btn.disabled = false;
+  refreshFailures();
+});
+
+/* ================= 已配置自动化 App 面板 ================= */
+const appState = { expanded: new Set(), tasks: {}, loaded: {}, refreshing: false };
+let dragId = null;
+
+function rowForPkg(pkg) {
+  let out = null;
+  document.querySelectorAll(".app-row").forEach((r) => { if (r.dataset.pkg === pkg) out = r; });
+  return out;
+}
+
+async function refreshApps(silent) {
+  if (appState.refreshing) return;
+  appState.refreshing = true;
+  let apps = [];
+  let failMsg = "";
+  try {
+    const p = await api("/api/pipeline", {}, 8000);
+    apps = Array.isArray(p.apps) ? p.apps : [];
+    failMsg = p.error || "";
+  } catch (e) {
+    failMsg = e.message;
+  }
+  if (!apps.length) {
+    /* 兜底：从 /api/flows 列出有 flow 的 pkg */
+    try {
+      const f = await api("/api/flows", {}, 8000);
+      const fl = Array.isArray(f.flows) ? f.flows : [];
+      apps = fl.filter((x) => x && x.pkg).map((x) => ({ pkg: x.pkg, name: x.name || x.pkg, enabled: true, steps: [] }));
+      failMsg = "";
+    } catch (e2) {
+      failMsg = failMsg || e2.message;
+    }
+  }
+  appState.refreshing = false;
+  if (!apps.length && !silent && failMsg) toast("App 列表加载失败：" + failMsg, "err");
+  renderApps(apps);
+}
+
+function renderApps(apps) {
+  apps.forEach((a) => appNameMap.set(a.pkg, a.name || a.pkg));   /* 供日志进度条显示 App 名 */
+  const box = $("appList");
+  $("appCount").textContent = apps.length ? "共 " + apps.length + " 个" : "";
+  if (!apps.length) { box.innerHTML = ""; $("appEmpty").hidden = false; return; }
+  $("appEmpty").hidden = true;
+
+  /* 保留已展开/已加载的任务状态 */
+  const keep = new Map();
+  box.querySelectorAll(".app-row").forEach((row) => {
+    const pkg = row.dataset.pkg;
+    if (apps.some((a) => a.pkg === pkg)) keep.set(pkg, { open: row.classList.contains("open") });
+  });
+
+  box.innerHTML = "";
+  apps.forEach((a) => {
+    const row = document.createElement("div");
+    const wasOpen = !!(keep.get(a.pkg) && keep.get(a.pkg).open);
+    row.className = "app-row" + (wasOpen ? " open" : "");
+    row.dataset.pkg = a.pkg;
+    row.innerHTML =
+      '<div class="app-head">' +
+        '<button class="caret-btn" type="button" title="展开/收起任务" aria-label="展开/收起任务">' + ICON.caret + '</button>' +
+        '<button class="caret-btn plus-btn" type="button" title="增加app任务/操作" aria-label="增加app任务/操作">' + ICON.plus + '</button>' +
+        '<label class="chk app-chk" title="流水线启停：勾选后启动流水线时包含该 App"><input type="checkbox" class="app-enabled"' + (a.enabled !== false ? " checked" : "") + '><span class="box"></span></label>' +
+        '<div class="app-id"><div class="app-name">' + esc(a.name || a.pkg) + '</div><div class="app-pkg">' + esc(a.pkg) + '</div></div>' +
+        '<span class="task-count"></span>' +
+        '<button class="btn primary sm app-run-btn" type="button" title="只运行该 App 下已启用（勾选）的自动化流程">▶ 运行自动化</button>' +
+        '<a class="btn ghost sm flow-link" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(a.pkg) + '&from=new">' + ICON.open + '图形化编排</a>' +
+        '<button class="btn ghost sm app-del-btn" type="button" title="删除此 App 及所有子任务">' + ICON.trash + ' 删除</button>' +
+      '</div>' +
+      '<div class="app-layer-note app-layer-hint" hidden style="padding:0 14px 8px"></div>' +
+      '<div class="tasks-wrap"><div class="tasks-inner"><div class="task-list"></div></div></div>';
+    row.querySelector(".caret-btn").addEventListener("click", () => toggleApp(row, a));
+    row.querySelector(".app-enabled").addEventListener("change", async (ev) => {
+      const chk = ev.currentTarget;
+      const want = chk.checked;
+      try {
+        const r = await api("/api/pipeline/apps/" + encodeURIComponent(a.pkg) + "/toggle", { method: "POST" }, 8000);
+        if (r && r.ok === false) throw new Error(r.error || r.msg || "切换失败");
+        if (r && typeof r.enabled === "boolean") chk.checked = r.enabled;
+        a.enabled = (r && typeof r.enabled === "boolean") ? r.enabled : want;
+        const noteEl = row.querySelector(".app-layer-note");
+        if (noteEl) {
+          noteEl.textContent = (a.enabled === false
+            ? "该 App 已停用：启动流水线会跳过；下方任务勾选仅影响「运行自动化」。"
+            : "App 已勾选：启动流水线时会包含本 App。任务勾选决定「运行自动化」执行哪些子任务。");
+        }
+        toast((r && r.msg) || (a.enabled ? "已启用 " : "已停用 ") + (a.name || a.pkg), "ok");
+      } catch (e) {
+        chk.checked = !want;
+        toast("App 启停失败：" + e.message, "err");
+      }
+    });
+    row.querySelector(".app-run-btn").addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget;
+      const label = a.name || a.pkg;
+      btn.dataset.orig = btn.dataset.orig || "▶ 运行自动化";
+      let tasks = appState.tasks[a.pkg];
+      if (!tasks) {
+        try {
+          const d0 = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg), {}, 8000);
+          tasks = (d0 && d0.tasks) || [];
+          appState.tasks[a.pkg] = tasks;
+          appState.loaded[a.pkg] = true;
+        } catch (e) { tasks = []; }
+      }
+      const sorted = tasks.slice().sort((x, y) => ((x.order == null ? 0 : x.order) - (y.order == null ? 0 : y.order)));
+      const on = sorted.filter((t) => t && t.enabled !== false);
+      const off = sorted.filter((t) => !t || t.enabled === false);
+      const lines = on.length
+        ? on.map((t, i) => "  " + (i + 1) + ". " + (t.name || t.id)).join("\n")
+        : "  （无已启用任务，启动会被拒绝）";
+      const offLine = off.length ? "\n\n将跳过（未勾选）：" + off.map((t) => t.name || t.id).join("、") : "";
+      const msg = "运行「" + label + "」下已启用的自动化流程？\n" +
+        "（仅该 App 的 run-all，不是顶栏「启动流水线」）\n\n" +
+        "将执行 " + on.length + " 个任务：\n" + lines + offLine + "\n\n确认启动？";
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      btn.textContent = "启动中…";
+      try {
+        const r = await api("/api/flows/" + encodeURIComponent(a.pkg) + "/run-all", { method: "POST" }, 10000);
+        if (r && r.ok === false) throw new Error(r.error || r.msg || "启动失败");
+        toast((r && r.msg) || ("已启动 " + label), "ok");
+        setTimeout(refresh, 400);
+      } catch (e) {
+        toast("运行启动失败：" + e.message, "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.orig || "▶ 运行自动化";
+        syncRunAllButtons();
+      }
+    });
+    row.querySelector(".app-del-btn").addEventListener("click", async () => {
+      if (!confirm('确认删除「' + (a.name || a.pkg) + '」？\n此操作将同时删除该 App 下的所有子任务，不可恢复。')) return;
+      try {
+        const r = await api("/api/pipeline/apps/" + encodeURIComponent(a.pkg), { method: "DELETE" }, 8000);
+        if (r && r.ok === false) throw new Error(r.error || "删除失败");
+        toast("已删除 " + (a.name || a.pkg), "ok");
+        refreshApps(true);
+      } catch (e) {
+        toast("删除失败：" + e.message, "err");
+      }
+    });
+    row.querySelector(".plus-btn").addEventListener("click", async () => {
+      /* 点击“＋”直接新增一个子任务（自动命名 新任务N），展开列表并刷新 */
+      try {
+        let n = 1;
+        try {
+          const d0 = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg), {}, 8000);
+          const ts = Array.isArray(d0 && d0.tasks) ? d0.tasks : [];
+          const names = new Set(ts.map((t) => t.name));
+          n = ts.length + 1;
+          while (names.has("新任务" + n)) n++;
+        } catch (e0) { /* 取不到列表就用默认序号 */ }
+        const name = "新任务" + n;
+        const rr = await api("/api/apps/tasks/" + encodeURIComponent(a.pkg) + "/add", {
+          method: "POST", body: JSON.stringify({ name })
+        }, 8000);
+        if (rr && rr.ok === false) throw new Error(rr.message || rr.error || "添加失败");
+        toast("已添加任务「" + name + "」，点名称旁的铅笔可重命名", "ok");
+        const r = rowForPkg(a.pkg) || row;
+        if (!r.classList.contains("open")) r.classList.add("open");
+        await loadTasks(r, a.pkg, true);
+      } catch (e) {
+        toast("添加失败：" + e.message, "err");
+      }
+    });
+    const noteEl = row.querySelector(".app-layer-note");
+    if (noteEl) {
+      noteEl.textContent = (a.enabled === false
+        ? "该 App 已停用：启动流水线会跳过；下方任务勾选仅影响「运行自动化」。"
+        : "App 已勾选：启动流水线时会包含本 App。任务勾选决定「运行自动化」执行哪些子任务。");
+      noteEl.hidden = !wasOpen;
+    }
+    if (wasOpen) {
+      if (appState.loaded[a.pkg]) renderTasks(row, a.pkg, appState.tasks[a.pkg] || []);
+      else loadTasks(row, a.pkg);
+    }
+    box.appendChild(row);
+  });
+}
+
+function toggleApp(row, a) {
+  const willOpen = !row.classList.contains("open");
+  row.classList.toggle("open", willOpen);
+  if (willOpen) {
+    if (appState.loaded[a.pkg]) renderTasks(row, a.pkg, appState.tasks[a.pkg] || []);
+    else loadTasks(row, a.pkg);
+  }
+  const note = row.querySelector(".app-layer-note");
+  if (note) note.hidden = !willOpen;
+}
+
+async function loadTasks(row, pkg, force) {
+  const list = row.querySelector(".task-list");
+  if (!force && appState.loaded[pkg]) { renderTasks(row, pkg, appState.tasks[pkg] || []); return; }
+  list.innerHTML = '<div class="task-hint">任务加载中…</div>';
+  let tasks = [];
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg), {}, 8000);
+    if (r && Array.isArray(r.tasks)) tasks = r.tasks;
+    else if (r && r.ok === false) throw new Error(r.message || r.error || "任务接口返回错误");
+    else if (r && r.error) throw new Error(r.error);
+    else throw new Error("任务接口响应格式异常");
+  } catch (e) {
+    appState.loaded[pkg] = false;
+    list.innerHTML = '<div class="task-hint err">任务列表加载失败：' + esc(e.message) + '</div>';
+    appendAddRow(list, pkg);
+    return;
+  }
+  appState.tasks[pkg] = tasks;
+  appState.loaded[pkg] = true;
+  renderTasks(row, pkg, tasks);
+}
+
+function enabledCount(tasks) {
+  return (tasks || []).filter((t) => t && t.enabled !== false).length;
+}
+
+function renderTasks(row, pkg, tasks) {
+  const list = row.querySelector(".task-list");
+  const sorted = tasks.slice().sort((a, b) => ((a.order == null ? 0 : a.order) - (b.order == null ? 0 : b.order)));
+  list.innerHTML = "";
+  if (!sorted.length) list.innerHTML = '<div class="task-hint">暂无任务</div>';
+  const bar = document.createElement("div");
+  bar.className = "task-toolbar";
+  bar.innerHTML =
+    '<button type="button" data-bulk="all" title="勾选全部任务">全选</button>' +
+    '<button type="button" data-bulk="none" title="取消全部任务勾选">全不选</button>' +
+    '<span class="hint">启用 ' + enabledCount(sorted) + " / " + sorted.length + ' · 勾选后才会被「运行自动化」执行</span>';
+  bar.querySelector('[data-bulk="all"]').addEventListener("click", () => bulkToggleTasks(pkg, row, true));
+  bar.querySelector('[data-bulk="none"]').addEventListener("click", () => bulkToggleTasks(pkg, row, false));
+  if (sorted.length) list.appendChild(bar);
+  sorted.forEach((t) => {
+    const el = taskRowEl(pkg, t);
+    list.appendChild(el);
+    bindTaskDnD(el, pkg);
+  });
+  const cnt = row.querySelector(".task-count");
+  cnt.textContent = sorted.length
+    ? (enabledCount(sorted) + "/" + sorted.length + " 启用")
+    : "";
+  cnt.title = "已启用子任务 / 总任务（运行自动化只跑已启用的）";
+  const link = row.querySelector(".flow-link");
+  const def = sorted.find((t) => t.enabled) || sorted[0];
+  if (def && def.id != null) {
+    link.href = "/flow_editor.html?pkg=" + encodeURIComponent(pkg) + "&task=" + encodeURIComponent(def.id) + "&from=new";
+  }
+  appendAddRow(list, pkg);
+}
+
+async function bulkToggleTasks(pkg, row, enable) {
+  const tasks = appState.tasks[pkg] || [];
+  let ok = 0, fail = 0;
+  for (const t of tasks) {
+    const want = !!enable;
+    if ((t.enabled !== false) === want) { ok++; continue; }
+    try {
+      const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/toggle", {
+        method: "POST", body: JSON.stringify({ id: t.id, enabled: want })
+      }, 8000);
+      if (r && r.ok === false) fail++;
+      else { t.enabled = want; ok++; }
+    } catch (e) { fail++; }
+  }
+  toast((enable ? "已全选 " : "已全不选 ") + ok + " 个任务" + (fail ? "，失败 " + fail : ""), fail ? "err" : "ok");
+  await loadTasks(row, pkg, true);
+}
+
+function taskRowEl(pkg, t) {
+  const row = document.createElement("div");
+  row.className = "task-row";
+  row.dataset.id = String(t.id);
+  row.innerHTML =
+    '<span class="grip" title="拖拽排序">' + ICON.grip + '</span>' +
+    '<label class="chk" title="启用/停用"><input type="checkbox"' + (t.enabled ? " checked" : "") + '><span class="box"></span></label>' +
+    '<span class="task-name">' + esc(t.name || t.id) + '</span>' +
+    '<button class="op rename-op" type="button" title="重命名" data-act="rename">' + ICON.pencil + '</button>' +
+    '<div class="task-ops">' +
+      '<button class="btn ghost sm runfrom-op runfrom-text" type="button" title="从此任务开始运行本 App 流水线（含本任务及其后启用任务）" data-act="runfrom">▶ 从此运行</button>' +
+      '<a class="op" title="图形化编辑" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(pkg) + '&task=' + encodeURIComponent(t.id) + '&from=new">' + ICON.open + '</a>' +
+      '<button class="op danger" type="button" title="删除" data-act="delete">' + ICON.trash + '</button>' +
+    '</div>';
+  const chk = row.querySelector("input");
+  chk.addEventListener("change", () => toggleTask(pkg, t, chk));
+  row.querySelector('[data-act="rename"]').addEventListener("click", () => startRename(row, pkg, t));
+  row.querySelector('[data-act="delete"]').addEventListener("click", () => deleteTask(pkg, t));
+  row.querySelector('[data-act="runfrom"]').addEventListener("click", () => runFromTask(pkg, t));
+  return row;
+}
+
+/* 70 轮：从子任务开始运行本 App 流水线（from_task 起跑启用任务）。
+ * 确认框列出将执行的任务清单（含本任务），确认后走 run-all（from_task 语义后端过滤）。 */
+async function runFromTask(pkg, t) {
+  if (runAllUi.running) { toast("批量执行进行中，请先停止", "err"); return; }
+  let list = [];
+  try {
+    const d = await api("/api/apps/tasks/" + encodeURIComponent(pkg), {}, 6000);
+    const all = (d && d.tasks) || [];
+    list = all.filter(x => x.enabled !== false)
+      .sort((a, b) => ((a.order == null ? 0 : a.order) - (b.order == null ? 0 : b.order)));
+    const idx = list.findIndex(x => String(x.id) === String(t.id));
+    if (idx < 0) { toast("起始任务不存在或未启用：「" + (t.name || t.id) + "」", "err"); return; }
+    list = list.slice(idx);
+  } catch (e) {
+    toast("读取任务清单失败：" + e.message, "err"); return;
+  }
+  const names = list.map(x => "· " + (x.name || x.id)).join("\n");
+
+  const head = "从「" + (t.name || t.id) + "」开始运行本 App 流水线（共 " + list.length + " 个任务）：";
+  if (!confirm(head + "\n" + names)) return;
+
+  try {
+    const r = await api("/api/flows/" + encodeURIComponent(pkg) + "/run-all", {
+      method: "POST", body: JSON.stringify({ from_task: String(t.id) })
+    }, 10000);
+    if (r && r.ok === false) { toast(r.error || "启动失败", "err"); return; }
+    toast("已从「" + (t.name || t.id) + "」开始批量执行，已打开画布跟随", "ok");
+    // 72b 轮：与 run-all 行为统一——自动打开画布跟随
+    window.open("/flow_editor.html?pkg=" + encodeURIComponent(pkg) +
+      "&task=" + encodeURIComponent(t.id) + "&follow=1&from=new", "_blank");
+    refresh();
+  } catch (e) {
+    toast("启动失败：" + e.message, "err");
+  }
+}
+
+async function toggleTask(pkg, t, chk) {
+  const want = chk.checked;
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/toggle", {
+      method: "POST", body: JSON.stringify({ id: t.id, enabled: want })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "切换失败");
+    t.enabled = want;
+  } catch (e) {
+    chk.checked = !want;
+    toast("任务启停失败：" + e.message, "err");
+  }
+}
+
+function startRename(row, pkg, t) {
+  if (row.classList.contains("editing")) return;
+  row.classList.add("editing");
+  const nm = row.querySelector(".task-name");
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.value = t.name || "";
+  input.maxLength = 40;
+  nm.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = async (save) => {
+    if (done) return;
+    done = true;
+    if (!save) { row.classList.remove("editing"); input.replaceWith(nm); return; }
+    const name = input.value.trim();
+    if (!name) { row.classList.remove("editing"); input.replaceWith(nm); toast("任务名不能为空", "err"); return; }
+    input.disabled = true;
+    try {
+      const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/rename", {
+        method: "POST", body: JSON.stringify({ id: t.id, name })
+      }, 8000);
+      if (r && r.ok === false) throw new Error(r.message || r.error || "改名失败");
+      t.name = name;
+      nm.textContent = name;
+      input.replaceWith(nm);
+      toast("已改名", "ok");
+    } catch (e) {
+      input.replaceWith(nm);
+      toast("改名失败：" + e.message, "err");
+    }
+    row.classList.remove("editing");
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(true); if (e.key === "Escape") commit(false); });
+  input.addEventListener("blur", () => commit(true));
+}
+
+async function deleteTask(pkg, t) {
+  if (!confirm('确认删除任务“' + (t.name || t.id) + '”？')) return;
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/delete", {
+      method: "POST", body: JSON.stringify({ id: t.id })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "删除失败");
+    toast("已删除", "ok");
+    const row = rowForPkg(pkg);
+    if (row) loadTasks(row, pkg, true);
+  } catch (e) {
+    toast("删除失败：" + e.message, "err");
+  }
+}
+
+function appendAddRow(list, pkg) {
+  const bar = document.createElement("div");
+  bar.className = "add-row";
+  bar.innerHTML = '<button class="btn ghost sm add-btn" type="button">' + ICON.plus + '添加任务</button>';
+  bar.querySelector(".add-btn").addEventListener("click", () => {
+    bar.innerHTML =
+      '<input class="add-input" placeholder="任务名称，如：日常签到" maxlength="40">' +
+      '<button class="btn primary sm ok-btn" type="button">确定</button>' +
+      '<button class="btn ghost sm cancel-btn" type="button">取消</button>';
+    const inp = bar.querySelector(".add-input");
+    const ok = bar.querySelector(".ok-btn");
+    const cancel = bar.querySelector(".cancel-btn");
+    inp.focus();
+    let busy = false;
+    const submit = async () => {
+      if (busy) return;
+      const name = inp.value.trim();
+      if (!name) { toast("请输入任务名称", "err"); return; }
+      busy = true;
+      ok.disabled = true; ok.textContent = "添加中…";
+      try {
+        const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/add", {
+          method: "POST", body: JSON.stringify({ name })
+        }, 8000);
+        if (r && r.ok === false) throw new Error(r.message || r.error || "添加失败");
+        toast("任务已添加", "ok");
+        const row = rowForPkg(pkg);
+        if (row) {
+          if (!row.classList.contains("open")) row.classList.add("open");
+          loadTasks(row, pkg, true);
+        } else {
+          appendAddRow(list, pkg);
+        }
+      } catch (e) {
+        busy = false;
+        ok.disabled = false; ok.textContent = "确定";
+        toast("添加失败：" + e.message, "err");
+      }
+    };
+    ok.addEventListener("click", submit);
+    cancel.addEventListener("click", () => { bar.innerHTML = ""; appendAddRow(list, pkg); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") cancel.click(); });
+  });
+  list.appendChild(bar);
+}
+
+/* 拖拽排序（HTML5 DnD，仅拖拽手柄可拖动）。
+   67 轮：插入位置用高亮横线指示（两任务之间），替代旧的"被经过行整行高亮"；
+   横线位置按鼠标在行内上半/下半判定，所见即松手后的插入位置。 */
+let dropLineEl = null;
+function dropLine() {
+  if (!dropLineEl) { dropLineEl = document.createElement("div"); dropLineEl.className = "drop-line"; document.body.appendChild(dropLineEl); }
+  return dropLineEl;
+}
+function hideDropLine() { if (dropLineEl) dropLineEl.style.display = "none"; }
+function showDropLine(list, beforeEl) {
+  const line = dropLine();
+  let x, y, w;
+  if (beforeEl) {
+    const r = beforeEl.getBoundingClientRect();
+    x = r.left; y = r.top; w = r.width;
+  } else {
+    // 列表末尾：最后一行（或 add-row）的下缘
+    const rows = [...list.querySelectorAll(".task-row")].filter((r) => r.dataset.id !== dragId);
+    const last = rows.length ? rows[rows.length - 1] : list.querySelector(".add-row");
+    if (!last) { hideDropLine(); return; }
+    const r = last.getBoundingClientRect();
+    x = r.left; y = r.bottom; w = r.width;
+  }
+  line.style.left = (x - 3) + "px";
+  line.style.top = (y - 1.25) + "px";
+  line.style.width = (w + 6) + "px";
+  line.style.display = "block";
+}
+function bindTaskDnD(row, pkg) {
+  const grip = row.querySelector(".grip");
+  grip.addEventListener("mousedown", () => { row.draggable = true; });
+  row.addEventListener("dragstart", (e) => {
+    dragId = row.dataset.id;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", row.dataset.id); } catch (err) {}
+    row.classList.add("dragging");
+  });
+  row.addEventListener("dragend", () => {
+    row.draggable = false;
+    row.classList.remove("dragging");
+    hideDropLine();
+    dragId = null;
+  });
+  const list = row.parentElement;
+  row.addEventListener("dragover", (e) => {
+    if (!dragId || dragId === row.dataset.id) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    // 上半/下半判定：线画在该行上缘或下缘（所见即所得）
+    const r = row.getBoundingClientRect();
+    const before = (e.clientY - r.top) < r.height / 2;
+    if (before) return showDropLine(list, row);          // 上半 → 该行上缘
+    const next = row.nextElementSibling;                   // 下半 → 该行下缘（= next 的上缘）
+    if (next && next.classList && next.classList.contains("add-row")) return showDropLine(list, null);
+    if (next && next.classList && next.classList.contains("task-row")) return showDropLine(list, next);
+    showDropLine(list, null);
+  });
+  list.addEventListener("dragover", (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    // 悬浮在列表空白处（行间 gap / 内边距）：找最近行判定，找不到按末尾处理
+    const overRow = e.target.closest ? e.target.closest(".task-row") : null;
+    if (!overRow && !e.target.closest(".add-row")) showDropLine(list, null);
+  });
+  list.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const id = dragId; dragId = null;
+    hideDropLine();
+    if (!id) return;
+    const src = findTaskRow(list, id);
+    if (!src) return;
+    // 与指示线同语义：按鼠标坐标定位插入点（elementFromPoint 兼容 e.target 为 list 自身的
+    // 情形——真实浏览器 drop 的 target 可能是行内子元素或 list 空白，统一用坐标判定更稳）
+    const overRow = (() => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      return el ? el.closest(".task-row") : null;
+    })();
+    if (overRow && overRow !== src) {
+      const r = overRow.getBoundingClientRect();
+      const before = (e.clientY - r.top) < r.height / 2;
+      const ref = before ? overRow : overRow.nextElementSibling;
+      if (ref && ref.classList && ref.classList.contains("add-row")) list.insertBefore(src, ref);
+      else if (ref && ref !== src) list.insertBefore(src, ref);
+      else list.insertBefore(src, null); // 末尾（append）
+    } else {
+      const bar = list.querySelector(".add-row");
+      if (bar) list.insertBefore(src, bar); else list.appendChild(src);
+    }
+    commitOrder(list, pkg);
+  });
+}
+
+function findTaskRow(list, id) {
+  let out = null;
+  list.querySelectorAll(".task-row").forEach((r) => { if (r.dataset.id === id) out = r; });
+  return out;
+}
+
+async function commitOrder(list, pkg) {
+  const ids = [];
+  list.querySelectorAll(".task-row").forEach((r) => ids.push(r.dataset.id));
+  try {
+    const r = await api("/api/apps/tasks/" + encodeURIComponent(pkg) + "/order", {
+      method: "POST", body: JSON.stringify({ ids })
+    }, 8000);
+    if (r && r.ok === false) throw new Error(r.message || r.error || "排序保存失败");
+    toast("任务顺序已保存", "ok");
+    const cur = appState.tasks[pkg] || [];
+    appState.tasks[pkg] = ids.map((id) => cur.find((t) => String(t.id) === id)).filter(Boolean);
+  } catch (e) {
+    toast("排序失败：" + e.message, "err");
+    const row = rowForPkg(pkg);
+    if (row) loadTasks(row, pkg, true);
+  }
+}
+
+/* ================= 扫描设备应用 ================= */
+async function scanDeviceApps() {
+  const btn = $("btnScanApps");
+  btn.disabled = true; btn.textContent = "扫描中…";
+  try {
+    const r = await api("/api/scan_device_apps", {}, 30000);
+    if (!r || r.ok === false) throw new Error((r && r.error) || "扫描失败");
+    if (!r.apps || !r.apps.length) { toast("未扫描到第三方应用（请确认 MuMu 已启动）", "err"); return; }
+    showScanModal(r.apps);
+  } catch (e) {
+    toast("扫描失败：" + e.message, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "扫描设备应用";
+  }
+}
+async function showScanModal(apps) {
+  const existing = new Set();
+  try {
+    const cfg = await api("/api/overview", {}, 8000);
+    (cfg.apps || []).forEach((a) => existing.add(a.pkg));
+  } catch (e) {}
+  const m = document.createElement("div");
+  m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:300;display:flex;align-items:center;justify-content:center";
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--card);border-radius:14px;max-width:520px;width:90%;max-height:70vh;overflow-y:auto;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.15)";
+  let html = '<h3 style="margin:0 0 12px;font-size:16px">扫描到 ' + apps.length + ' 个应用</h3>';
+  html += '<div style="font-size:12px;color:var(--ink-3);margin-bottom:10px">勾选要添加到自动化目录的应用（已添加的标记为灰色）</div>';
+  html += '<input type="text" id="scanSearch" placeholder="搜索应用名或包名…" style="width:100%;padding:6px 10px;border:1.5px solid var(--line-2);border-radius:8px;font:inherit;font-size:12.5px;margin-bottom:10px;outline:none">';
+  html += '<div id="scanList">';
+  apps.forEach((a) => {
+    const has = existing.has(a.pkg);
+    html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:' + (has ? "default" : "pointer") + ';background:' + (has ? "rgba(44,47,42,0.04)" : "transparent") + '" class="scan-item" data-pkg="' + esc(a.pkg) + '">';
+    html += '<img src="/api/app_icon/' + encodeURIComponent(a.pkg) + '" style="width:32px;height:32px;border-radius:7px;flex:none" onerror="this.style.display=\'none\'">';
+    html += '<input type="checkbox"' + (has ? " disabled" : "") + ' data-pkg="' + esc(a.pkg) + '" data-name="' + esc(a.name) + '">';
+    html += '<div style="flex:1"><div style="font-size:13.5px;font-weight:' + (has ? "400" : "500") + ';color:' + (has ? "var(--ink-3)" : "var(--ink)") + '">' + esc(a.name) + (a.category === "game" ? ' <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(94,139,110,0.14);color:#5E8B6E;margin-left:4px">游戏</span>' : "") + (has ? ' <span style="font-size:12px;color:var(--ok)">✓ 已添加</span>' : "") + '</div>';
+    html += '<div style="font-size:11.5px;color:var(--ink-3);font-family:var(--mono)">' + esc(a.pkg) + (a.version ? ' · v' + esc(a.version) : "") + '</div></div></label>';
+  });
+  html += '</div>';
+  html += '<div style="display:flex;gap:10px;margin-top:16px"><button class="btn primary" id="scanAddBtn" type="button">添加选中</button><button class="btn ghost" id="scanCloseBtn" type="button">取消</button></div>';
+  card.innerHTML = html; m.appendChild(card); document.body.appendChild(m);
+  /* 搜索过滤 */
+  const search = $("scanSearch");
+  if (search) {
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      card.querySelectorAll(".scan-item").forEach((item) => {
+        const txt = (item.textContent || "").toLowerCase();
+        item.style.display = (!q || txt.indexOf(q) >= 0) ? "" : "none";
+      });
+    });
+  }
+  $("scanCloseBtn").onclick = () => m.remove();
+  m.addEventListener("click", (e) => { if (e.target === m) m.remove(); });
+  $("scanAddBtn").onclick = async () => {
+    const checked = card.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) { toast("请至少选择一个应用", "err"); return; }
+    let ok = 0, fail = 0;
+    for (const cb of checked) {
+      try {
+        const r = await api("/api/pipeline/apps", { method: "POST", body: JSON.stringify({ pkg: cb.dataset.pkg, name: cb.dataset.name, source: "scan" }) }, 8000);
+        if (r && r.ok !== false) ok++; else fail++;
+      } catch (e) { fail++; }
+    }
+    m.remove();
+    if (ok) { toast("已添加 " + ok + " 个应用", "ok"); refreshApps(true); }
+    if (fail) toast(fail + " 个添加失败", "err");
+  };
+}
+$("btnScanApps").addEventListener("click", scanDeviceApps);
+
+/* ================= 初始化 ================= */
+applyAnimPref();
+
+/* URL 参数 ?expand=1：自动展开第一个 app 的任务列表（便于预览/测试） */
+(function autoExpandForTest() {
+  if (new URLSearchParams(location.search).get("expand") !== "1") return;
+  const timer = setInterval(() => {
+    const row = document.querySelector(".app-row");
+    if (!row) return;
+    clearInterval(timer);
+    row.classList.add("open");
+    loadTasks(row, row.dataset.pkg);
+  }, 300);
+})();
+
+document.querySelectorAll(".tab").forEach((t) => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on"));
+    t.classList.add("on");
+    curTab = t.dataset.tab;
+    logState.lastKey = "";   /* 切 tab 强制重渲染 */
+    renderLog(logState.raw);
+    refresh();
+  });
+});
+
+$("btnStart").addEventListener("click", () => pipelineAction("start"));
+$("btnStop").addEventListener("click", () => pipelineAction("stop"));
+/* 70 轮：暂停/继续（toggle 语义走 /api/flows/pause） */
+$("btnPause").addEventListener("click", async () => {
+  const btn = $("btnPause");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/flows/pause", { method: "POST" }, 8000);
+    if (r && r.ok === false) { toast(r.error || r.message || "操作失败", "err"); return; }
+    toast(r.msg || "已处理", "ok");
+  } catch (e) {
+    toast("暂停/继续失败：" + e.message, "err");
+  } finally {
+    setTimeout(refresh, 1200);
+  }
+});
+$("btnRefreshStatus").addEventListener("click", () => {
+  refresh(); refreshFailures(); refreshApps(true);
+  toast("已刷新状态", "ok");
+});
+$("logFilterQ").addEventListener("input", (e) => {
+  logFilter.q = e.target.value || "";
+  logState.lastKey = "";
+  renderLog(logState.raw);
+});
+$("logFilterErr").addEventListener("change", (e) => {
+  logFilter.errOnly = !!e.target.checked;
+  logState.lastKey = "";
+  renderLog(logState.raw);
+});
+
+$("btnSettings").addEventListener("click", openSettings);
+$("btnCloseSettings").addEventListener("click", closeSettings);
+$("settingsModal").addEventListener("click", (e) => { if (e.target === $("settingsModal")) closeSettings(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+$("chkAnim").addEventListener("change", () => {
+  try { localStorage.setItem("autofw_anim_enabled", $("chkAnim").checked ? "1" : "0"); } catch (e) {}
+  applyAnimPref();
+});
+
+$("btnRefreshMumu").addEventListener("click", refreshOverview);
+$("btnMumuStart").addEventListener("click", () => mumuAction("start"));
+$("btnMumuStop").addEventListener("click", () => mumuAction("stop"));
+$("btnMumuAdb").addEventListener("click", () => mumuAction("adb"));
+
+refresh();
+setInterval(refresh, 3000);
+refreshOverview();
+setInterval(refreshOverview, 5000);
+refreshFailures();
+setInterval(refreshFailures, 5000);
+refreshApps();
+setInterval(() => {
+  /* 编辑/拖拽进行中不自动重绘，避免打断操作 */
+  if (document.querySelector(".editing") || document.querySelector(".add-row .add-input") || dragId) return;
+  refreshApps(true);
+}, 20000);
+</script>
+</body>
+</html>

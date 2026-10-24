@@ -73,7 +73,8 @@ input,select,textarea { font-family:var(--sans); }
 #crumb .sep { color:var(--ink-3); }
 #flowName { font-weight:600; }
 .tbtn { padding:4px 12px; background:var(--paper); border:2px solid var(--ink);
-  font-size:12px; position:relative; transition:all 120ms; border-radius:var(--radius-f); }
+  font-size:12px; position:relative; transition:all 120ms; border-radius:var(--radius-f);
+  white-space:nowrap; flex:0 0 auto; }  /* 2026-10-24 UX：防窄屏文字竖排折行 */
 .tbtn:hover { background:var(--ink); color:var(--paper); }
 .tbtn:active { transform:translate(1px,1px); box-shadow:none; }
 .tbtn.primary { background:var(--ink); color:var(--paper); }
@@ -430,12 +431,31 @@ body.log-closed #minimap { bottom:42px; }
   margin-top:2px; max-height:64px; overflow:hidden; }
 
 /* ---- 小地图 ---- */
-#minimap { position:fixed; right:262px; bottom:182px; width:150px; height:96px;
-  background:var(--paper); border:1.5px solid var(--ink); z-index:60; overflow:hidden;
-  box-shadow:3px 3px 0 rgba(44,47,42,0.18); }
-#minimap canvas { width:100%; height:100%; display:block; }
-#minimap .mlbl { position:absolute; left:4px; top:2px; font-family:var(--mono);
-  font-size:8px; color:var(--ink-3); letter-spacing:1px; }
+/* 71d/71e 轮：小地图（updream 风格）——右下毛玻璃卡片 + header 收起（收起=图标模式）+ SVG 角色着色 */
+#minimap { position:fixed; right:262px; bottom:182px; width:200px; z-index:60;
+  border-radius:8px; overflow:hidden;
+  background:rgba(243,241,235,0.92); border:1.5px solid var(--ink);
+  box-shadow:3px 3px 0 rgba(44,47,42,0.15); backdrop-filter:blur(8px); }
+#minimap .mm-head { display:flex; align-items:center; justify-content:space-between;
+  padding:5px 8px; }
+#minimap .mm-title { font-size:11px; color:var(--ink-2); font-weight:600; letter-spacing:0.5px; }
+#minimap .mm-collapse { border:none; background:transparent; color:var(--ink-3); cursor:pointer;
+  width:20px; height:20px; border-radius:5px; display:inline-flex; align-items:center;
+  justify-content:center; padding:0; }
+#minimap .mm-collapse:hover { background:rgba(44,47,42,0.06); color:var(--ink); }
+#minimap svg { display:block; width:200px; height:120px; }
+#minimap .mm-node-run { animation:mmRunBlink 1.2s ease-in-out infinite; }
+@keyframes mmRunBlink { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+/* 71e 轮：收起态=地图图标模式（整卡缩成 44×40 圆角图标按钮，点击展开） */
+#minimap.collapsed { width:44px; cursor:pointer; }
+#minimap.collapsed .mm-head, #minimap.collapsed #mmSvg { display:none; }   /* 71h：只藏总览本体，图标按钮的 svg 不受后代选择器误伤 */
+#minimap.collapsed #mmIconBtn { display:flex; }
+#mmIconBtn { display:none; width:44px; height:40px; align-items:center; justify-content:center;
+  color:var(--ink); background:var(--paper-bright); border:1.5px solid var(--ink); border-radius:8px;
+  box-shadow:2px 2px 0 rgba(44,47,42,0.2); }
+#minimap.collapsed { border-color:var(--ink); background:var(--paper-bright); }
+#mmIconBtn:hover { background:#fff; color:var(--main); border-color:var(--main); }
+#mmIconBtn svg { width:20px; height:20px; display:block; margin:0; }
 
 /* ---- 图像缩略图 / 点击定位图 ---- */
 .imgthumb { margin-top:6px; border:1.5px solid var(--ink); background:var(--paper-bright);
@@ -744,7 +764,7 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
   </div>
 </div>
 
-<div id="minimap"><span class="mlbl">MINIMAP</span><canvas id="mmCanvas" width="300" height="192"></canvas></div>
+<div id="minimap"><button id="mmIconBtn" title="展开小地图" aria-label="展开小地图"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l4-4 3 3 5-5 6 6"/><circle cx="9" cy="8" r="1.4" fill="currentColor" stroke="none"/></svg></button><div class="mm-head"><span class="mm-title">流程总览</span><button class="mm-collapse" id="mmCollapse" title="收起"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button></div><svg id="mmSvg" width="200" height="120"></svg></div>
 
 <div id="logbar">
   <div class="ltabs">
@@ -2561,42 +2581,91 @@ function legacyArcPath(f, t) {
 let _mmMap = null; // 58 轮：小地图点击跳转用的 世界→小地图 映射 { minX, minY, sc, padX, padY }
 function renderMinimap() {
   renderZoomCtl(); // 53 轮：小地图重绘=视图变化，同步缩放百分比
-  const cv = $("mmCanvas"), ctx = cv.getContext("2d");
-  ctx.clearRect(0, 0, 300, 192);
+  const svg = $("mmSvg");
+  if (!svg) return;
+  const NS = "http://www.w3.org/2000/svg";
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
   const nodes = ctxNodes();
-  if (!nodes.length) { _mmMap = null; return; }
+  if (!nodes.length) return;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   nodes.forEach((n) => {
     minX = Math.min(minX, n.pos.x); minY = Math.min(minY, n.pos.y);
     maxX = Math.max(maxX, n.pos.x + 140); maxY = Math.max(maxY, n.pos.y + 50);
   });
-  // T8：以节点真实包围盒为基准算缩放，并把节点群居中绘制到 300×192 视窗（不再从 (0,0) 左上贴边）
-  const pad = 8;
-  const sc = Math.min((300 - 2 * pad) / Math.max(1, maxX - minX), (192 - 2 * pad) / Math.max(1, maxY - minY));
-  const contentW = (maxX - minX) * sc, contentH = (maxY - minY) * sc;
-  const padX = (300 - contentW) / 2, padY = (192 - contentH) / 2;
-  _mmMap = { minX, minY, sc, padX, padY }; // 记录映射供点击跳转反解世界坐标
-  ctx.strokeStyle = "#6B7267"; ctx.lineWidth = 1;
-  nodes.forEach((n) => {
-    const x = padX + (n.pos.x - minX) * sc, y = padY + (n.pos.y - minY) * sc;
-    ctx.strokeRect(x, y, Math.max(10, 140 * sc), Math.max(8, 50 * sc));
+  const pad = 10;
+  const W = 200, H = 120;
+  const sc = Math.min((W - 2 * pad) / Math.max(1, maxX - minX), (H - 2 * pad) / Math.max(1, maxY - minY));
+  const padX = (W - (maxX - minX) * sc) / 2, padY = (H - (maxY - minY) * sc) / 2;
+  _mmMap = { minX, minY, sc, padX, padY };
+  const X = (wx) => padX + (wx - minX) * sc;
+  const Y = (wy) => padY + (wy - minY) * sc;
+  // 连线：细线同角色色（71d 轮：数据流向可见）
+  const edges = ctxEdges();
+  const roles = getRoles().byEdge;
+  edges.forEach((e) => {
+    const f = nodeById(e.from), t = nodeById(e.to);
+    if (!f || !t || f.pos.x == null || t.pos.x == null) return;
+    const line = document.createElementNS(NS, "line");
+    line.setAttribute("x1", X(f.pos.x + 140)); line.setAttribute("y1", Y(f.pos.y + 25));
+    line.setAttribute("x2", X(t.pos.x)); line.setAttribute("y2", Y(t.pos.y + 25));
+    line.setAttribute("stroke", "#98998F");   // 71f 轮：中性灰（不与节点类型色撞）
+    line.setAttribute("stroke-width", "0.8");
+    line.setAttribute("opacity", "0.6");
+    svg.appendChild(line);
   });
-  // 视口框
+  // 节点：圆角矩形按【节点类型】着色（71f 轮：roles 把 start/action/end 都算 main，
+  // 全图一色无区分度；类型色与节点库/画布 TYPE_META 对齐，一眼分辨流程结构）
+  const runActive = (S.run && S.run.running && runActiveNode()) ? runActiveNode().id : null;
+  const containers = new Set(Object.keys(S.subgraphs || {}));
+  const TYPE_COLOR = {
+    start: "#4E9E67", end: "#6B7267",
+    action: "#2B7FFF", print: "#4E9E67",
+    condition: "#D98A2B", if_else: "#D98A2B", else_if: "#D98A2B", switch_case: "#D98A2B",
+    loop_for: "#7A6FCE", loop_while: "#7A6FCE", loop_do_while: "#7A6FCE", loop_for_each: "#7A6FCE",
+    break: "#BC5F51",
+  };
+  const typeColor = (n) => TYPE_COLOR[n.type] || "#8A9085";
+  nodes.forEach((n) => {
+    const color = typeColor(n);
+    const isCond = n.type === "condition" || n.type === "if_else" || n.type === "switch_case";
+    const w = Math.max(10, 140 * sc), h = Math.max(9, 50 * sc);   // 71f：h≥9 防压扁成点
+    const rect = document.createElementNS(NS, "rect");
+    rect.setAttribute("x", X(n.pos.x)); rect.setAttribute("y", Y(n.pos.y));
+    rect.setAttribute("width", w); rect.setAttribute("height", h);
+    rect.setAttribute("rx", "1.5");
+    rect.setAttribute("opacity", n.id === runActive ? "1" : "0.85");
+    rect.setAttribute("fill", color);
+    rect.setAttribute("stroke", "rgba(44,47,42,0.35)");
+    rect.setAttribute("stroke-width", "0.6");
+    if (isCond) rect.setAttribute("fill-opacity", "0.75");   // 条件节点半透区分
+    if (n.id === runActive) {
+      rect.setAttribute("class", "mm-node-run");
+      rect.setAttribute("stroke", "#BC5F51");
+      rect.setAttribute("stroke-width", "1.2");
+    }
+    if (containers.has(n.id)) rect.setAttribute("stroke-dasharray", "2 1.5");
+    svg.appendChild(rect);
+  });
+  // 视口框：半透明填充 + 实线圆角边框（71d 轮：替换虚线）
   const vw = $("stage").clientWidth / S.view.scale, vh = $("stage").clientHeight / S.view.scale;
-  const vx = padX + (-S.view.x / S.view.scale - minX) * sc, vy = padY + (-S.view.y / S.view.scale - minY) * sc;
-  ctx.strokeStyle = "#6B7267"; ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 3]);
-  ctx.strokeRect(vx, vy, vw * sc, vh * sc);
-  ctx.setLineDash([]);
+  const vx = X(-S.view.x / S.view.scale), vy = Y(-S.view.y / S.view.scale);
+  const vp = document.createElementNS(NS, "rect");
+  vp.setAttribute("x", Math.max(0, vx)); vp.setAttribute("y", Math.max(0, vy));
+  vp.setAttribute("width", Math.min(vw * sc, W)); vp.setAttribute("height", Math.min(vh * sc, H));
+  vp.setAttribute("rx", "2");
+  vp.setAttribute("fill", "rgba(44,47,42,0.16)");
+  vp.setAttribute("stroke", "var(--ink)");
+  vp.setAttribute("stroke-width", "1.6");
+  svg.appendChild(vp);
 }
 /* 58 轮：小地图点击跳转——把点击点反解为世界坐标并居中到画布视口 */
-$("mmCanvas").addEventListener("click", (e) => {
+$("mmSvg").addEventListener("click", (e) => {
   if (!_mmMap) return;
   if (window._mmDragged) return; // 62 轮：拖动结束后的 click 不触发跳转
-  const rect = $("mmCanvas").getBoundingClientRect();
+  const rect = $("mmSvg").getBoundingClientRect();
   // canvas 内部 300×192，CSS 显示 150×96 → 先换算内部坐标再反解世界坐标
-  const mx = (e.clientX - rect.left) / rect.width * 300;
-  const my = (e.clientY - rect.top) / rect.height * 192;
+  const mx = (e.clientX - rect.left) / rect.width * 200;
+  const my = (e.clientY - rect.top) / rect.height * 120;
   const wx = (mx - _mmMap.padX) / _mmMap.sc + _mmMap.minX;
   const wy = (my - _mmMap.padY) / _mmMap.sc + _mmMap.minY;
   const st = $("stage");
@@ -2606,28 +2675,51 @@ $("mmCanvas").addEventListener("click", (e) => {
 });
 
 /* 62 轮：minimap 拖动视口框——按住拖动，把拖动增量反向映射为画布视口平移 */
-$("mmCanvas").addEventListener("mousedown", (e) => {
+$("mmSvg").addEventListener("mousedown", (e) => {
   if (!_mmMap || e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   window._mmDragged = false; // 62 轮：拖动标志，抑制 mouseup 后的 click 跳转
-  const cv = $("mmCanvas");
+  const cv = $("mmSvg");
   const st = $("stage");
   const start = { mx: e.clientX, my: e.clientY, vx: S.view.x, vy: S.view.y };
   const move = (ev) => {
     // minimap 内 1px（CSS 显示像素）= 1/_mmMap.sc 世界像素 = 1/(sc*scale) 视口像素
-    const dxCss = (ev.clientX - start.mx) * (cv.width / cv.getBoundingClientRect().width);
-    const dyCss = (ev.clientY - start.my) * (cv.height / cv.getBoundingClientRect().height);
+    const dxCss = (ev.clientX - start.mx);
+    const dyCss = (ev.clientY - start.my);
     S.view.x = start.vx - dxCss / _mmMap.sc * S.view.scale;
     S.view.y = start.vy - dyCss / _mmMap.sc * S.view.scale;
     clampView(); render(); renderZoomCtl();
     window._mmDragged = true;
   };
-  const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); setTimeout(() => { window._mmDragged = false; }, 50); };
+  const up = () => {
+    window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+    if (window._mmDragged) { setTimeout(() => { window._mmDragged = false; }, 50); }   // 71d：仅拖动过才抑制 click
+    else window._mmDragged = false;
+  };
   window.addEventListener("mousemove", move);
   window.addEventListener("mouseup", up);
 });
+/* 71d 轮：小地图收起/展开（updream 风格 header 按钮），偏好按工作流记住 */
+  (function () {
+    const mm = $("minimap"), btn = $("mmCollapse");
+    if (!mm || !btn) return;
+    const key = "autofw_mm_collapse_" + (typeof PKG !== "undefined" ? (PKG || "default") : "default");
+    let pref = null;
+    try { pref = localStorage.getItem(key); } catch (e) {}
+    if (pref === "1") mm.classList.add("collapsed");
+    const setCollapsed = (v) => {
+      mm.classList.toggle("collapsed", v);
+      btn.title = v ? "展开小地图" : "收起";
+      try { localStorage.setItem(key, v ? "1" : "0"); } catch (e) {}
+    };
+    btn.addEventListener("click", () => setCollapsed(!mm.classList.contains("collapsed")));
+    // 71e：收起态整卡即图标按钮——点卡片任意处展开
+    mm.addEventListener("click", (e) => {
+      if (mm.classList.contains("collapsed") && e.target.closest("#mmIconBtn")) setCollapsed(false);
+    });
+  })();
 /* 62 轮：minimap 滚轮=按内容排布方向滚动视图（与 stage 滚轮同方向语义：shift 强制横向） */
-$("mmCanvas").addEventListener("wheel", (e) => {
+$("mmSvg").addEventListener("wheel", (e) => {
   e.preventDefault(); e.stopPropagation();
   if (!_mmMap) return;
   const horizontal = e.shiftKey || canvasContentAspect() === "h";
@@ -5311,7 +5403,7 @@ async function adoptRunning() { // 45d 轮：页面加载/切任务后接管服�
   try {
     const d = await api("/api/flows/runstatus");
     // 71 轮：run-all 模式只接管本 App 的运行；其他 App 在跑时不接管（follow=1 时由跟随定时器处理并提示）
-    const _otherRunAll = d && d.running && d.mode === "run_all" && d.pkg !== PKG;
+    const _otherRunAll = d && d.running && (d.mode === "run_all" || (!d.mode && d.pkg)) && d.pkg !== PKG;
     if (d && d.running && !_otherRunAll) { S.run = Object.assign({ _self: true }, d); S.runStart = Date.now(); startPoll(); logRun("⚠ 检测到服务端有运行中的工作流，已重新接管跟踪（可能是刷新前启动的）"); }
     else if (_otherRunAll) {
       logRun("⚠ 流水线正在运行其他 App（" + (d.pkg || "") + "），本画布不接管跟踪");
@@ -5341,7 +5433,9 @@ async function adoptRunning() { // 45d 轮：页面加载/切任务后接管服�
         const d = await api("/api/flows/runstatus");
         // 编辑器自身有运行 → 让位
         if (S.run && S.run.running && S.run._self) return;
-        if (d && d.running && d.mode === "run_all") {
+        // 72b 轮：跟随扩展认单任务运行（runstatus 单任务分支无 mode，有 pkg）
+        const isRunAllOrSingle = d.running && (d.mode === "run_all" || (!d.mode && d.pkg));
+        if (d && d.running && isRunAllOrSingle) {
           if (d.pkg !== PKG) {
             if (!S._followWrongPkg) { S._followWrongPkg = true;
               logRun("⚠ 流水线正在运行其他 App（" + (d.pkg || "") + "），本画布不跟随");
@@ -5430,7 +5524,7 @@ function startPoll() {
     try { d = await api("/api/flows/runstatus"); } catch (e) { return; } // 45c 轮：单拍拉取失败跳过本拍，轮询继续不清
     // 71 轮：run-all 切到其他 App → 本画布运行态已结束（旧 App 跑完了），清运行态+高亮，
     // 避免"上一家的高亮残留"；follow 定时器会提示"正在运行其他 App"
-    if (d && d.running && d.mode === "run_all" && d.pkg !== PKG) {
+    if (d && d.running && (d.mode === "run_all" || (!d.mode && d.pkg)) && d.pkg !== PKG) {
       S.run = null; S.runStart = null; S._followLastNode = null;
       updateRunBtns(); render();
       return;
@@ -5713,14 +5807,21 @@ $("btnExit").onclick = async () => {
   // 防嵌套退出：主界面已改为新标签打开本编辑器，正常路径为顶层页面，直接跳转即可；
   // 若本页被嵌入 iframe：仅当顶层同源（即顶层就是主界面）才用 window.top 跳转，
   // 跨域/未知顶层一律不覆盖，改为提示用户关闭标签页返回主界面。
+  // 2026-10-24 UX 修复：from=new 时回新版控制台（来路一致；此前从新版点进来退出却被扔回旧版）
+  var exitHome = "/index.html";
+  try {
+    var _from = new URLSearchParams(window.location.search).get("from");
+    if (_from === "new") exitHome = "/index_new.html";
+    else if (_from === "old") exitHome = "/index.html";
+  } catch (e) { /* 忽略，默认旧版 */ }
   if (window.self !== window.top) {
     let sameOrigin = false;
     try { sameOrigin = (window.top.location.origin === window.location.origin); } catch (e) { sameOrigin = false; }
-    if (sameOrigin) { window.top.location.href = "/index.html"; return; }
-    if (confirm("当前为内嵌视图，无法直接跳转。请关闭此标签页返回主界面。")) { location.href = "/index.html"; }
+    if (sameOrigin) { window.top.location.href = exitHome; return; }
+    if (confirm("当前为内嵌视图，无法直接跳转。请关闭此标签页返回主界面。")) { location.href = exitHome; }
     return;
   }
-  location.href = "/index.html";
+  location.href = exitHome;
 };
 /* ---- 底部栏收起/展开 ---- */
 $("btnLogToggle").onclick = () => {

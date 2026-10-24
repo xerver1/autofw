@@ -53,8 +53,18 @@ def main():
             sys.exit(2)
 
     # 2. 组装运行时（配置面接线：recovery/checkpoint 参数真正从配置读取）
+    # 2026-10-24 UX 修复：配置缺失/JSON 损坏此前裸抛 traceback 且只进 stderr（面板无读取
+    # 通道），用户只看到"秒退"。改为中文报错写入 app.log（面板运行日志可见）后退出。
     import json as _json
-    _cfg = _json.load(open(args.config, encoding="utf-8"))
+    try:
+        _cfg = _json.load(open(args.config, encoding="utf-8"))
+    except OSError as e:
+        log.error("编排配置读取失败：%s（路径：%s）。请确认文件存在；说明见 README.md", e, args.config)
+        sys.exit(2)
+    except ValueError as e:
+        log.error("编排配置 %s 存在 JSON 语法错误：%s。常见原因：多余/缺失逗号、引号未闭合、"
+                  "注释不是合法 JSON。修正后重新启动", args.config, e)
+        sys.exit(2)
     _rec = _cfg.get("recovery", {})
     _ck = _cfg.get("checkpoint", {})
     device = EmulatorDevice()
@@ -76,9 +86,7 @@ def main():
 
     # 4. 跑流水线（B1 修复：--no-resume 真正生效，resume 开关传入 Pipeline）
     # 执行模式：命令行 --mode 优先；否则取 pipeline.json 顶层 mode 字段（默认 adapter）。
-    import json as _json
-    _cfg_mode = _json.load(open(args.config, encoding="utf-8")).get("mode", "adapter")
-    mode = (args.mode or _cfg_mode or "adapter").lower()
+    mode = (args.mode or _cfg.get("mode", "adapter") or "adapter").lower()
     if mode == "flow":
         from core.flow_pipeline import FlowPipeline
         log.info("执行模式=flow（图形化工作流，B2 路线）")

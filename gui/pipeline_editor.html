@@ -248,7 +248,7 @@ async function load() {
     candidates = d.candidates || [];
     render();
     $("count").textContent = "共 " + apps.length + " 个 App 自动化" + (d.updated_at ? " · 最近保存 " + d.updated_at : "");
-    $("footInfo").textContent = "候选 " + candidates.length + " 个";
+    $("footInfo").textContent = "候选 " + candidates.length + " 个（设备上未加入流水线的 App）";
   } catch (e) {
     $("empty").style.display = "block";
     $("empty").textContent = "加载失败：" + e.message + " —— 请确认面板服务已启动";

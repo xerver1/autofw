@@ -457,10 +457,38 @@ class FlowRunner:
         self.aborted = True
         self._pause_ev.set()
 
+    _pause_flag_ts = 0   # 71 轮：pause.flag 节流读取时间戳（类级，10s 查一次文件）
+
+    def _check_pause_flag(self):
+        """71 轮：子进程流水线的节点级暂停（增强）——启动流水线模式下，
+        面板无法直接操作本进程的 _pause_ev，改用 state/pause.flag 文件通道；
+        10s 节流读文件。flag 存在时阻塞轮询（2s 间隔）直至移除。"""
+        import os as _os, time as _time
+        now = _time.time()
+        if now - FlowRunner._pause_flag_ts < 10:
+            return
+        FlowRunner._pause_flag_ts = now
+        try:
+            flag = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                                 "state", "pause.flag")
+            if not _os.path.isfile(flag):
+                return
+            log.warning("[flow] ⏸ 检测到暂停标志——当前节点完成后暂停（移除 flag 或控制台点「继续」恢复）")
+            while _os.path.isfile(flag):
+                if self.aborted:
+                    # 72a 轮修复：停止必须能打断暂停等待（否则 flag 残留 + stop = 永久卡死）
+                    log.warning("[flow] ⏹ 暂停等待中收到终止指令——中断等待")
+                    raise RunAborted("已终止（暂停等待中收到停止）")
+                _time.sleep(2)
+            log.warning("[flow] ▶ 暂停解除，继续执行")
+        except OSError:
+            pass
+
     def _checkpoint(self):
         # 先查终止标志（防 stop 后 pause 的竞态：stop 置位后 event 被 clear 也不得阻塞）
         if self.aborted:
             raise RunAborted("已终止")
+        self._check_pause_flag()   # 71 轮：子进程流水线节点级暂停（10s 节流）
         self._pause_ev.wait()
         if self.aborted:
             raise RunAborted("已终止")

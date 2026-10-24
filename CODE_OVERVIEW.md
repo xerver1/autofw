@@ -1,5 +1,7 @@
 # autofw 代码说明文档（CODE_OVERVIEW）
 
+> ⚠️ **本文档已过时（2026-10-24 标注）**：内容停留在 v1.0（2026-08-15），未覆盖其后新增的 **flow 引擎子系统**（core/flow_engine.py、flow_executor.py、flow_pipeline.py、failures.py）、**GUI 子系统**（gui/ 目录：server.py 约 60 个 API 端点 + 控制台/画布编辑器/流水线编排等页面）以及 v1.1 GitHub 发布。当前架构与使用方式以 **[README.md](README.md)**（已重写）与 **[HANDOVER.md](HANDOVER.md)** 为准；本文仅作历史参考。
+>
 > 版本：v1.0（2026-08-15）｜本文档与当前代码逐一比对验证，路径/函数/命令以实际代码为准
 > 配套文档：《通用多App自动化框架架构设计.md》《执行文档-Agent执行指南.md》（详见 §9）
 

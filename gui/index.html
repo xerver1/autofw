@@ -369,6 +369,8 @@ try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.document
   </div>
   <div class="nav-mid">
     <a href="/pipeline_editor.html" target="_blank" rel="noopener">流水线编排</a>
+    <a href="/ocr.html" target="_blank" rel="noopener" title="识别调试工具：截图文字识别 / 模板排查">OCR 调试</a>
+    <a href="/index_new.html" target="_blank" rel="noopener" style="color:var(--main,#008AFF);font-weight:600" title="体验新版控制台界面（预览版，不影响本页功能）">✦ 新版界面</a>
   </div>
   <div class="nav-ops">
     <button id="btnStart" class="btn primary" type="button" title="按流水线编排顺序执行步骤；与 App 行「运行自动化」（只跑该 App 已启用子任务）不同"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M5.2 3.4v9.2L13 8 5.2 3.4z" fill="currentColor"/></svg>启动流水线</button>
@@ -660,16 +662,19 @@ async function refresh() {
     const run = s.running;
     let ra = null;
     try { ra = await api("/api/flows/runstatus", {}, 4000); } catch (e0) { ra = null; }
-    const raRun = !!(ra && ra.running);
+    const raRun = !!(ra && ra.running && ra.mode === "run_all");   // 72b：仅 run-all（单任务运行走下方独立分支）
     runAllUi.running = raRun;
     runAllUi.pkg = raRun ? ra.pkg : null;
     runAllUi.taskIndex = ra ? (ra.task_index || 0) : 0;
     runAllUi.total = ra ? (ra.total || 0) : 0;
     runAllUi.taskId = raRun ? (ra.task_id || null) : null;   // 71 轮：画布跳转用
     const anyRun = run || raRun;
+    const subOnly = run && !raRun;   // main.py 子进程流水线模式（71 轮）
+    const subPaused = !!(run && !raRun && s.paused);   // 71 轮：子进程暂停态（提前定义防 TDZ）
     $("dot").className = "dot " + (anyRun ? "run" : "stop");
-    $("dot").style.background = (raRun && ra.paused) ? "#D98A2B" : "";   // 70 轮：已暂停黄点
-    $("stateText").textContent = run ? "运行中" : (raRun ? "批量执行中" : "已停止");
+    $("dot").style.background = ((raRun && ra.paused) || (run && !raRun && s.paused)) ? "#D98A2B" : "";   // 已暂停黄点（面板内/子进程）
+    const singleRun = !!(ra && ra.running && !ra.mode);   // 72b：单任务运行
+    $("stateText").textContent = run ? "运行中" : (raRun ? "批量执行中" : (singleRun ? "运行中（任务）" : "已停止"));
     const badge = $("runAllBadge");
     if (raRun && badge) {
       badge.hidden = false;
@@ -693,8 +698,18 @@ async function refresh() {
       } else {
         $("stateDetail").textContent = "空闲（上次正常结束）";
       }
+    } else if (subOnly) {
+      $("stateDetail").textContent = subPaused ? "⏸ 已暂停——子进程流水线（点「继续」恢复）" : "正在执行流水线" + (s.app ? "：" + s.app : "");
     } else if (raRun) {
       $("stateDetail").textContent = (ra.paused ? "⏸ 已暂停——" : "正在执行 ") + (ra.task_name || ra.task_id || "任务") + "（" + (ra.task_index || 0) + "/" + (ra.total || 0) + "）" + (ra.paused ? "（点「继续」恢复）" : "");
+    } else if (ra && ra.running && !ra.mode) {
+      // 72b 轮：单任务运行（编辑器发起，runstatus 单任务分支无 mode）——控制台可见 + 画布跳转
+      const stPkg = ra && ra.pkg ? ra.pkg : null;
+      const stTask = ra && ra.task_id ? ra.task_id : null;
+      const appLabel = stPkg ? ((appNameMap.get(stPkg)) || stPkg) : "";
+      $("stateDetail").innerHTML = "运行中：" + esc(appLabel) + (ra && ra.task_name ? " · " + esc(ra.task_name) : "") +
+        ' <a class="follow-link" target="_blank" rel="noopener" href="/flow_editor.html?pkg=' + encodeURIComponent(stPkg || "") +
+        (stTask ? "&task=" + encodeURIComponent(stTask) : "") + '&follow=1">⤢ 查看画布</a>';
     } else {
       $("stateDetail").textContent = run && s.app ? "当前任务: " + s.app : "空闲";
     }
@@ -749,20 +764,22 @@ async function refresh() {
     }
     $("btnStart").disabled = anyRun;
     $("btnStop").disabled = !anyRun;
-    // 70 轮：暂停按钮状态机——仅面板内运行可暂停；子进程流水线（run=true 且非 run-all）不支持
+    // 70 轮 + 71 轮：暂停按钮状态机——面板内运行（raRun）与子进程流水线（run）都支持
+    // （71 轮：子进程走 state/pause.flag 文件通道，/api/flows/pause 内部自动分流）
     const raPaused = !!(raRun && ra.paused);
-    const subOnly = run && !raRun;   // main.py 子进程流水线模式
+    const paused = raPaused || subPaused;   // subPaused 提前定义（anyRun 后）
     const btnPause = $("btnPause");
     if (btnPause) {
-      btnPause.disabled = !raRun;    // 只有 run-all/面板内运行可暂停（runstatus 有 runner）
-      btnPause.textContent = raPaused ? "▶ 继续" : "⏸ 暂停";
-      btnPause.title = raPaused ? "继续执行（当前节点完成后恢复）" : (subOnly ? "子进程流水线模式不支持暂停" : "暂停面板内运行（当前节点完成后暂停）");
-      btnPause.classList.toggle("warn-btn", raPaused);
+      btnPause.disabled = !anyRun;   // 有运行就可暂停（两种模式都支持）
+      btnPause.textContent = paused ? "▶ 继续" : "⏸ 暂停";
+      btnPause.title = paused ? "继续执行（当前节点完成后恢复）"
+        : (subOnly ? "暂停子进程流水线（当前子任务完成后暂停）" : "暂停面板内运行（当前节点完成后暂停）");
+      btnPause.classList.toggle("warn-btn", paused);
     }
     syncRunAllButtons();
   } catch (e) {
     $("stateText").textContent = "面板服务连接失败";
-    $("stateDetail").textContent = "请确认 gui/server.py 正在运行";
+    $("stateDetail").textContent = "面板服务未响应：请关闭本页，重新双击 start.bat（启动记录见 logs\\startup.log）";
   }
 }
 
@@ -839,6 +856,7 @@ async function refreshOverview() {
 }
 
 async function mumuAction(act) {
+  if (act === "stop" && !confirm("确认关闭 MuMu 模拟器？\n正在运行的自动化会被立即中断。")) return;
   if (mumuBusy) return;
   mumuBusy = act;
   const isAdb = act === "adb";
@@ -874,7 +892,7 @@ const STATUS_LABEL = { pending: "待处理", handled: "已处理", ignored: "已
 async function refreshFailures() {
   try {
     const d = await api("/api/failures", {}, 6000);
-    $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 共 " + d.count + "）";
+    $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 累计 " + d.count + "）";
     const clearBtn = $("btnClearFail");
     if (clearBtn) {
       const none = !d.failures || !d.failures.length || !(d.pending || 0);
@@ -1254,7 +1272,10 @@ async function runFromTask(pkg, t) {
       method: "POST", body: JSON.stringify({ from_task: String(t.id) })
     }, 10000);
     if (r && r.ok === false) { toast(r.error || "启动失败", "err"); return; }
-    toast("已从「" + (t.name || t.id) + "」开始批量执行", "ok");
+    toast("已从「" + (t.name || t.id) + "」开始批量执行，已打开画布跟随", "ok");
+    // 72b 轮：与 run-all 行为统一——自动打开画布跟随
+    window.open("/flow_editor.html?pkg=" + encodeURIComponent(pkg) +
+      "&task=" + encodeURIComponent(t.id) + "&follow=1", "_blank");
     refresh();
   } catch (e) {
     toast("启动失败：" + e.message, "err");

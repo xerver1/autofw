@@ -1,12 +1,12 @@
-# 2026-10-04 发布版：4 个运行必需依赖（gui/server.py、core/* 逐 import 对账过）
 opencv-python>=4.8,<5.0
 numpy>=2.0
 pillow>=10.0,<12.0
 rapidocr-onnxruntime>=1.2.3,<2.0
 
-# 安装提示：
-# 1. 建议使用虚拟环境：python -m venv .venv
-#    激活后：python -m pip install -r requirements.txt
-# 2. Windows 宿主若设置了 PIP_USER=1 环境变量，venv 内安装会报错，
-#    必须使用：python -m pip install --no-user -r requirements.txt
-# 3. Python 3.13 自带 venv；本框架实测 3.12+ 均可。
+# 2026-09-30 注：历史 requirements 缺 rapidocr-onnxruntime（flow_executor OCR 必需，懒加载不易暴露）。
+# venv 重装：删除 .venv 后用系统 Python 3.12+ 重建，再按本文件安装
+#（旧 venv 的 pyvenv.cfg base 解释器可能指向已删除的目录，属已知迁移遗留）。
+# ⚠ 装包命令（2026-09-30 实测）：宿主有环境变量 PIP_USER=1，会让 freeze/list 只显示
+# 用户目录（表现为空清单）、且在本 venv 内 install 直接报错——必须带 --no-user：
+#   D:\autofw\.venv\Scripts\python.exe -m pip install --no-user <包名>
+# （pip.exe 等 CLI 入口的内嵌路径已失效，一律用 python -m pip。）

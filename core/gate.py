@@ -60,7 +60,10 @@ class Gate:
             if "device" not in r.stdout.lower():
                 self.issues.append("adb 未就绪（127.0.0.1:16384）——确认模拟器已启动且等待 30-60s")
         except (subprocess.TimeoutExpired, OSError):
-            self.issues.append("adb 调用失败——确认 MuMu 自带 adb 路径存在")
+            # 2026-10-24 UX：报错带上实际尝试的路径（此前只说"路径存在"，新手不知去哪改）
+            self.issues.append(
+                f"adb 调用失败——未找到 MuMu 自带 adb：{ADB}。"
+                f"若 MuMu 安装在其他位置，请修改 core/gate.py 顶部的 ADB/CUSTOMER_CONFIG 路径")
 
     def _check_resolution(self):
         """分辨率实查（A4 修复）：adb shell wm size（物理竖屏 1080x1920，逻辑横屏 1920×1080，

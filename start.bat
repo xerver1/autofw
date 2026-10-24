@@ -49,11 +49,8 @@ exit /b 1
 
 :venv_create
 echo [autofw] first run: creating venv...
-python -m virtualenv .venv >"%LOGDIR%\venv_create.log" 2>&1
-set "VENV_RC=%errorlevel%"
->>"%LOG%" echo [%TS%] STAGE2 virtualenv rc=%VENV_RC%
-if "%VENV_RC%"=="0" goto :pip_install
-echo [WARN] virtualenv missing, trying python -m venv ...
+rem 2026-10-24 UX fix: use builtin venv directly (virtualenv first-attempt always
+rem fails on a fresh machine and the [WARN] scares novices)
 python -m venv .venv >"%LOGDIR%\venv_create.log" 2>&1
 set "VENV_RC=%errorlevel%"
 >>"%LOG%" echo [%TS%] STAGE2 venv rc=%VENV_RC%
@@ -78,8 +75,13 @@ pause
 exit /b 1
 
 :pip_install
-echo [autofw] installing deps (first run, ~1-2 min)...
-".venv\Scripts\pip.exe" install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple >"%LOGDIR%\pip_install.log" 2>&1
+echo [autofw] installing deps (first run)...
+echo [autofw] This may take 1-3 minutes. Please DO NOT close this window.
+echo [autofw] (no output is normal - progress is written to logs\pip_install.log)
+rem 2026-10-24 UX fix: pip.exe CLI entry points are broken on this setup and
+rem PIP_USER=1 makes plain install fail inside the venv (see requirements.txt
+rem notes) - must use "python -m pip" with --no-user
+".venv\Scripts\python.exe" -m pip install --no-user -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple >"%LOGDIR%\pip_install.log" 2>&1
 set "PIP_RC=%errorlevel%"
 >>"%LOG%" echo [%TS%] STAGE2 pip rc=%PIP_RC%
 if not "%PIP_RC%"=="0" goto :err_pip
@@ -140,6 +142,10 @@ if defined OCCUPY_PID (
     echo [WARN]   occupant PID not resolved
 )
 echo [WARN] autofw cannot serve on 8765 while it is occupied.
+if defined OCCUPY_PID (
+    echo [WARN]   occupant process:
+    tasklist /FI "PID eq %OCCUPY_PID%"
+)
 where choice >nul 2>nul
 if errorlevel 1 goto :occupied_abort
 if not defined OCCUPY_PID goto :occupied_abort

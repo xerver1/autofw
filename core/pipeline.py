@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import sys
 import time
 
 import cv2
@@ -43,6 +44,7 @@ class Pipeline:
         start_idx = self.checkpoint.get("pipeline_index", 0)
         for idx in range(start_idx, len(self.entries)):
             entry = self.entries[idx]
+            self._wait_if_paused(label="App「%s」开始前" % entry["app"])
             log.info("[流水线] (%d/%d) 开始执行 App：%s", idx + 1, len(self.entries), entry["app"])
             self.checkpoint.set("pipeline_index", idx)
             self.checkpoint.set("app", entry["app"])
@@ -85,6 +87,7 @@ class Pipeline:
                 if self.checkpoint.is_completed(f"{adapter.package}:{task_id}"):
                     log.info("skip completed task %s (checkpoint)", task_id)
                     continue
+                self._wait_if_paused(label="任务「%s」开始前" % task_id)
                 log.info("[流水线] 执行任务：%s：%s", adapter.display_name, task_id)
                 self._run_task_with_retry(adapter, ctx, task)
                 self.checkpoint.mark_completed(f"{adapter.package}:{task_id}")
@@ -172,7 +175,11 @@ class Pipeline:
                     self.checkpoint.mark_completed(f"{adapter.package}:{task.task_id}")
                     return
                 if decision == "pause":
-                    raise HumanTakeover(f"resume paused by user: {task.task_id}")
+                    raise HumanTakeover(
+                        f"流水线已暂停：无法确认任务「{task.task_id}」的游戏内状态"
+                        f"（取证图 state/error_frame.png）。请打开游戏手动确认该任务——"
+                        f"完成后重新启动流水线会自动跳过已完成部分；确认无需执行可配置 "
+                        f"pipeline.json 的 checkpoint.resume_auto=skip。")
                 # decision == "continue"：前台双确认（E1）后执行
                 self.recovery.assert_foreground(adapter, ctx)
                 task.execute(ctx)
@@ -210,16 +217,41 @@ class Pipeline:
             return "skip"
         # verdict is None：无法确认 → 暂停三态
         self._save_evidence(ctx)
-        log.warning("resume: cannot verify state of %s (evidence saved)", task.task_id)
+        log.warning("[断点] 无法确认任务「%s」的游戏内状态（取证图已存 state/error_frame.png）", task.task_id)
         if self.config.get("checkpoint", {}).get("resume_auto", "ask") == "skip":
-            log.warning("resume_auto=skip configured, skipping %s", task.task_id)
+            log.warning("resume_auto=skip 已配置，跳过任务 %s", task.task_id)
             return "skip"
         if self.config.get("checkpoint", {}).get("resume_auto") == "continue":
             return "continue"
+        # 2026-10-24 UX 修复：面板（gui/server.py）以子进程启动且 stdout 被 DEVNULL 丢弃，
+        # input() 的提问在浏览器面板与黑窗口均不可见 → 流水线假死在"运行中"。
+        # 非交互环境（stdin 非 TTY）禁止 input()，走 pause 路径：
+        # HumanTakeover → add_failure → 面板「待手动处理」卡片可见，假死变为可见暂停。
+        if sys.stdin is None or not sys.stdin.isatty():
+            log.error("[断点] 检测到非交互环境（面板启动），无法弹出三选一提问。"
+                      "流水线将暂停：已完成的任务已记录，重新启动后会自动跳过；"
+                      "若确认该任务无需执行，可在 pipeline.json 配置 checkpoint.resume_auto=skip。")
+            return "pause"
         choice = input(f"[断点] 无法确认任务 [{task.task_id}] 的游戏内状态\n"
                        f"  1=手动接管后继续  2=跳过该任务  3=暂停退出\n"
                        f"  请选择 (1/2/3): ").strip()
         return {"1": "continue", "2": "skip", "3": "pause"}.get(choice, "pause")
+
+    def _wait_if_paused(self, label=""):
+        """2026-10-24 UX 修复：adapter 模式接入面板暂停通道（与 flow_pipeline 71 轮同机制）。
+        state/pause.flag 存在时阻塞等待（每 2s 轮询），移除后继续。
+        此前面板「暂停」按钮只对 flow 模式生效，adapter 模式点击无效。"""
+        flag = os.path.join("state", "pause.flag")
+        if not os.path.isfile(flag):
+            return
+        log.warning("[流水线] ⏸ 检测到暂停标志（%s），%s：等待面板「继续」指令…", flag, label)
+        waited = 0
+        while os.path.isfile(flag):
+            time.sleep(2)
+            waited += 2
+            if waited % 30 == 0:
+                log.warning("[流水线] ⏸ 流水线已暂停 %d 秒（面板点「继续」或删除 state/pause.flag 恢复）", waited)
+        log.warning("[流水线] ▶ 暂停解除，继续执行")
 
     def _save_evidence(self, ctx):
         """失败证据：错误帧截图 + 断点（可追溯，三框架共识）。"""

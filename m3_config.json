@@ -1,8 +1,8 @@
 {
   "pipeline": [
     {
-      "app": "com.wn.app.np",
-      "tasks": ["open_menu"],
+      "app": "com.android.settings",
+      "tasks": ["main"],
       "enabled": true
     }
   ],
