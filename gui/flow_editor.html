@@ -671,6 +671,7 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
   <span id="vBadge">v0</span>
   <button class="tbtn" id="btnValidate">校验</button>
   <button class="tbtn" id="btnSave">保存</button>
+  <button class="tbtn" id="btnRecord" title="录制模拟器操作，停止后插入当前画布（81 轮）">⏺ 录制</button>
   <button class="tbtn" id="btnMock">试运行</button>
   <button class="tbtn primary" id="btnRun">运行</button>
   <button class="tbtn" id="btnPause">暂停</button>
@@ -682,9 +683,10 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
     <button class="tbtn" id="btnMore">⋯更多 ▾</button>
     <div class="tmore-menu">
       <button class="tbtn" id="btnEdgeMode" title="切换连线样式：曲线自动避让（默认） / 旧版直线">线型:曲线</button>
-      <button class="tbtn" id="btnExport">导出JSON</button>
-      <button class="tbtn" id="btnImport">导入</button>
-      <button class="tbtn" id="btnSnapshot">快照PNG</button>
+      <button class="tbtn" id="btnExport" title="把当前任务的全部流程（含子图）导出为 JSON 文件备份">导出JSON</button>
+      <button class="tbtn" id="btnImport" title="从导出的 JSON 文件恢复流程（覆盖当前任务的全部内容，可撤销）">导入</button>
+      <button class="tbtn" id="btnSnapshot" title="把当前画布截为 PNG 图片保存">快照PNG</button>
+      <button class="tbtn" id="btnVersions" title="查看历史版本，可恢复任一版本到画布（恢复后需点保存落盘）">🕘版本历史</button>
       <button class="tbtn" id="btnLogs">运行记录</button>
     </div>
   </div>
@@ -699,14 +701,20 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
 </div>
 <button id="taskbarToggle" type="button" title="收起/展开任务栏" aria-label="收起/展开任务栏">«</button>
 
+<style>
+.plib-group { padding:7px 10px 3px; font-size:10.5px; color:var(--ink-3, #999);
+  letter-spacing:1px; border-top:1px dashed var(--ink-3, #ccc); margin-top:4px; }
+</style>
 <div id="palette">
   <h4>节点库 NODE LIB</h4>
+  <div class="plib-group">基础</div>
   <div class="pitem" data-type="start"><span class="ico">●</span><div><div class="lbl">开始</div><div class="sub">START</div></div></div>
   <div class="pitem" data-type="end"><span class="ico">◎</span><div><div class="lbl">结束</div><div class="sub">END</div></div></div>
   <div class="pitem" data-type="action"><span class="ico">▸</span><div><div class="lbl">动作</div><div class="sub">ACTION</div></div></div>
   <div class="pitem" data-type="action" data-action="swipe 960 540 960 1040 400" data-label="滑动"><span class="ico">↔</span><div><div class="lbl">滑动</div><div class="sub">SWIPE 手势</div></div></div>
   <div class="pitem" data-type="print"><span class="ico">✎</span><div><div class="lbl">打印</div><div class="sub">PRINT 日志</div></div></div>
   <!-- 2026-09-19：节点库隐藏「条件判断」（引擎/已有节点仍支持 condition 类型）；请用「如果-否则」或「否则如果」 -->
+  <div class="plib-group">流程控制</div>
   <div class="pitem" data-type="if_else"><span class="ico">◈</span><div><div class="lbl">如果-否则</div><div class="sub">IF-ELSE 双分支</div></div></div>
   <div class="pitem" data-type="switch_case"><span class="ico">⬡</span><div><div class="lbl">多分支</div><div class="sub">SWITCH-CASE</div></div></div>
   <div class="pitem" data-type="loop_for"><span class="ico">⟳</span><div><div class="lbl">循环 for</div><div class="sub">固定次数</div></div></div>
@@ -714,6 +722,7 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
   <div class="pitem" data-type="loop_do_while"><span class="ico">↻</span><div><div class="lbl">循环 do-while</div><div class="sub">至少一次</div></div></div>
   <div class="pitem" data-type="loop_for_each"><span class="ico">⟿</span><div><div class="lbl">遍历列表</div><div class="sub">FOR-EACH</div></div></div>
   <div class="pitem" data-type="break" title="跳出最近一层循环（放在循环体/分支内）"><span class="ico">⛔</span><div><div class="lbl">跳出循环</div><div class="sub">BREAK 跳出 while/for</div></div></div>
+  <div class="pitem" data-type="maintenance_check" title="停服/维护止损：开头检测维护公告画面，命中则跳过本 App 剩余任务"><span class="ico">🛡</span><div><div class="lbl">维护检测</div><div class="sub">维护公告→跳过本 App</div></div></div>
   <!-- 2026-09-19 用户要求：else_if 用不到，节点库回滚隐藏（引擎仍识别已存在节点） -->
   <div style="padding:10px 8px;font-size:10.5px;color:var(--ink-3);line-height:1.7">
     拖拽到画布添加<br>双击循环节点进入循环体<br>Shift+拖拽 框选多节点
@@ -780,6 +789,23 @@ body.no-anim *, body.no-anim *::before, body.no-anim *::after { animation:none !
 <div id="restoreBar"></div>
 <div id="toast"></div>
 
+<!-- 81 轮：录制状态条（顶部居中常驻，用户操作模拟器期间可见计时与手势数） -->
+<div id="recBanner" style="display:none">
+  <span class="rec-dot"></span>
+  <span id="recInfo" style="font-size:12.5px;white-space:nowrap">⏺ 录制中…</span>
+  <button class="tbtn primary" id="btnRecStop" type="button">■ 停止并插入</button>
+  <button class="tbtn" id="btnRecCancel" type="button">放弃</button>
+</div>
+<style>
+#recBanner { position:fixed; top:58px; left:50%; transform:translateX(-50%); z-index:380;
+  display:flex; align-items:center; gap:12px; padding:8px 14px;
+  background:var(--paper); border:2px solid var(--ink); border-radius:var(--radius-f);
+  box-shadow:3px 3px 0 rgba(44,47,42,0.18); }
+#recBanner .rec-dot { width:10px; height:10px; border-radius:50%; background:var(--red);
+  animation:recBlink 1s infinite; }
+@keyframes recBlink { 50% { opacity:0.2; } }
+</style>
+
 <!-- 截图选区浮窗 -->
 <div id="cropOverlay">
   <div class="crop-ov-mask"></div>
@@ -821,6 +847,19 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
   (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 const uid = (p) => p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 function toast(msg, kind) {
+  // 84 轮 P1-7：错误 toast 堆叠（最多 3 条，连续错误不再只留最后一条）
+  if (kind === "err") {
+    const stack = [...document.querySelectorAll(".toast-stacked")];
+    if (stack.length >= 3) stack[0].remove();
+    const t = document.createElement("div");
+    t.className = "toast err toast-stacked";
+    t.textContent = msg;
+    t.style.cssText += ";bottom:" + (24 + stack.length * 46) + "px;cursor:pointer;";
+    document.body.appendChild(t);
+    t.onclick = () => t.remove();
+    setTimeout(() => t.remove(), 8000);
+    return;
+  }
   const t = $("toast"); t.textContent = msg; t.className = kind || "";
   t.style.display = "block"; clearTimeout(t._h);
   // UX-08 修复：错误类 toast 延长停留并支持点击关闭
@@ -840,6 +879,11 @@ const TYPE_META = {
   end:          { ico: "◎", label: "结束", sub: "END" },
   action:       { ico: "▸", label: "动作", sub: "ACTION" },
   print:        { ico: "✎", label: "打印", sub: "PRINT" },
+  /* 85 轮备注（2026-10-25 用户决策）：condition / else_if 为隐藏类型——节点库不展示
+     （2026-09-19 起），但引擎与存量流程仍支持（存量流程含 condition 节点）。属性面板
+     继续伺候存量节点；三套面板渲染代码（condition/if_else/else_if）约 90% 重复且
+     【维持现状不合并】——今后改文案/修 bug 时须注意多分支处手工同步。 */
+  maintenance_check: { ico: "🛡", label: "维护检测", sub: "MAINT CHECK" },  /* 86 轮：命中维护画面→App 级跳过 */
   condition:    { ico: "◇", label: "条件判断", sub: "IF" },
   if_else:      { ico: "◈", label: "如果-否则", sub: "IF-ELSE" },
   switch_case:  { ico: "⬡", label: "多分支", sub: "SWITCH" },
@@ -1152,6 +1196,7 @@ function shade(hex, dl) {
 const ACTION_PRESETS = [
   { v: "adb_tap 960 1008", l: "点击坐标（adb_tap x y）" },
   { v: "am_start", l: "启动应用（am_start activity）" },
+  { v: "app_close", l: "关闭应用（app_close——关闭本流程的 App）" },
   { v: "wait 1000", l: "等待（wait 毫秒）" },
   { v: "swipe 500 900 500 300 400", l: "滑动（swipe x1 y1 x2 y2 ms）" },
   { v: "key back", l: "按键（key back/home）" },
@@ -1323,7 +1368,9 @@ async function loadFlow() {
   S.pkg = d.pkg; S.name = d.name; S.version = d.version;
   S.graph = d.graph || { nodes: [], edges: [] };
   S.subgraphs = d.subgraphs || {};
+  S._savedSig = flowSig(S.graph, S.subgraphs);  // 84 轮：已保存内容指纹（无变化不重复写版本）
   reconcileAllTaps(); reconcileAllSwipes(); // 加载即自愈：双源脱节节点自动对齐（tap+swipe，2026-10-11）
+  UndoSys.reset(); UndoSys.push("基线");     // 83 轮：撤销基线（切任务/刷新重置）
   S.dirty = false;
   rolesDirty();
   enterCtx(null);
@@ -1341,6 +1388,15 @@ async function loadFlow() {
       // 误报已由「saveFlow 成功后清草稿」根除，此处无需再放宽：草稿存在 == 确有未保存改动。
       const updMs = d.updated ? Date.parse(d.updated.replace(" ", "T")) : 0;
       if (lsd.ts > updMs) {
+        /* 91 轮：先比内容指纹——草稿与服务器内容一致时静默清掉不弹横幅。
+           事故现场：测试期旧草稿(13:37)时间戳 > 服务器旧时间 → 用户每次刷新都见横幅，
+           但草稿内容早已落盘（或已过期），弹了只会诱导用户「恢复」把新数据滚回去。 */
+        const draftSig = flowSig(lsd.graph, lsd.subgraphs);
+        const serverSig = flowSig(S.graph, S.subgraphs);
+        if (draftSig === serverSig) {
+          localStorage.removeItem(LSKEY);
+          return;
+        }
         const bar = $("restoreBar");
         bar.innerHTML = "检测到本地草稿（保存于 " + new Date(lsd.ts).toLocaleTimeString() + "），比服务器新：<button class='tbtn' id='rYes'>恢复草稿</button><button class='tbtn' id='rNo'>用服务器版本</button>";
         bar.style.display = "block";
@@ -1356,12 +1412,26 @@ async function loadFlow() {
 }
 async function saveFlow(silent) {
   if (!S.graph.nodes.length && !S.dirty && silent) return;
+  // 84 轮：内容与已保存版本完全一致时跳过写盘（消除自动保存造成的版本号漂移）
+  const _sigNow = flowSig(S.graph, S.subgraphs);
+  if (S._savedSig !== undefined && _sigNow === S._savedSig) {
+    S.dirty = false;
+    /* 91 轮：手动保存撞上自动保存已跑完时，别再说"无改动"——用户刚改过东西，
+       这话让人以为改动丢了。改成人话：报当前版本号 + 自动保存时间（logAuto 记录最近一次）。 */
+    if (!silent) {
+      /* logTabs.auto 是自动保存记录（logAuto 写入，尾条=最近一次） */
+      const lastAuto = (window.logTabs && logTabs.auto.length) ? logTabs.auto[logTabs.auto.length - 1] : "";
+      const m = /已保存 v(\d+)（(.+?)）/.exec(lastAuto);
+      toast(m ? "内容已是最新（v" + m[1] + "，" + m[2] + " 已自动保存）" : "内容已是最新（v" + S.version + "）", "");
+    }
+    return;
+  }
   backupLocal();                                              // 61d：先备份（草稿=待保存快照）
   const sigSaved = flowSig(S.graph, S.subgraphs);              // 61d：本次提交内容指纹
   const d = await api(flowBase(), "POST", {
     name: S.name, graph: S.graph, subgraphs: S.subgraphs,
   });
-  if (d.ok) { S.version = d.version; $("vBadge").textContent = "v" + S.version; S.dirty = false;
+  if (d.ok) { S.version = d.version; $("vBadge").textContent = "v" + S.version; S.dirty = false; S._savedSig = sigSaved;
     // 61d 轮：延后一拍再清理 —— markDirty 定时器里紧跟的 backupLocal 会同步补写一份内容相同的草稿，
     // 直接清会误删；等它落盘后按【内容指纹】判断：与本次提交一致 → 清（无意义快照）；
     // 不一致 → 说明保存期间又产生了新改动，必须保留（否则改动既不在服务器、草稿也没了）。
@@ -1392,20 +1462,35 @@ function backupLocal() {
    靠时间戳无法区分它和"保存期间产生的真改动"，改用内容指纹即可精确区分。 */
 function flowSig(g, subs) {
   try {
-    const ns = (g && g.nodes) || [];
-    let s = ns.length + "|";
-    for (let i = 0; i < ns.length; i++) {
-      const n = ns[i] || {}, p = n.pos || {}, c = n.config || n.cfg || {};
-      s += n.id + "@" + (p.x | 0) + "," + (p.y | 0) + ":" +
-        (c.action || c.kind || c.op || "") + (c.image || "") + (c.text || "") +
-        (c.delay_ms == null ? "" : c.delay_ms) + (c.max_iter == null ? "" : c.max_iter) +
-        (c.invert ? "1" : "") + (c.region_match ? JSON.stringify(c.region_match) : "") + ";";
-    }
-    s += "|" + (((g && g.edges) || []).length) + "|";
+    // 90 轮：子图边/位置入指纹，修『子图连线保存被判无改动』盲区
+    const nodeSig = (ns) => {
+      let t = ns.length + "|";
+      for (let i = 0; i < ns.length; i++) {
+        const n = ns[i] || {}, p = n.pos || {}, c = n.config || n.cfg || {};
+        t += n.id + "@" + (p.x | 0) + "," + (p.y | 0) + ":" +
+          (c.action || c.kind || c.op || "") + (c.image || "") + (c.text || "") +
+          (c.delay_ms == null ? "" : c.delay_ms) + (c.max_iter == null ? "" : c.max_iter) +
+          (c.invert ? "1" : "") + (c.region_match ? JSON.stringify(c.region_match) : "") +
+          // 93 轮：tap_src/tap_offset 入指纹——否则用户只改「点击位置来源」开关保存时
+          // 会被「无改动」指纹闸吞掉（第 90 轮事故同款）
+          // 94 轮：tap_max_age 同样入指纹（改新鲜度上限保存不得被误判无改动）
+          (c.tap_src || "") + (c.tap_offset ? JSON.stringify(c.tap_offset) : "") + (c.tap_max_age != null ? "@" + c.tap_max_age : "") + ";";
+      }
+      return t;
+    };
+    const edgeSig = (es) => {
+      let t = es.length + "#";
+      for (let i = 0; i < es.length; i++) {
+        const e = es[i] || {};
+        t += (e.from || "") + "->" + (e.to || "") + ":" + (e.label || "") + ";";
+      }
+      return t;
+    };
+    let s = nodeSig((g && g.nodes) || []) + "|" + edgeSig((g && g.edges) || []) + "|";
     const ks = Object.keys(subs || {}).sort();
     for (let i = 0; i < ks.length; i++) {
-      const sn = (subs[ks[i]] && subs[ks[i]].nodes) || [];
-      s += ks[i] + ":" + sn.length + ",";
+      const sg = subs[ks[i]] || {};
+      s += ks[i] + "[" + nodeSig(sg.nodes || []) + "|" + edgeSig(sg.edges || []) + "],";
     }
     return s;
   } catch (e) { return "err" + Date.now(); }
@@ -1717,6 +1802,40 @@ function branchPickerOutside(ev) {
   const p = $("branchPicker");
   if (p && !p.contains(ev.target)) closeBranchPicker();
 }
+/* 84 轮 P1-2：多分支节点分支体选择（cases + default；与判断节点双击交互一致） */
+function showSwitchPicker(node, anchorEl) {
+  closeBranchPicker();
+  const cases = (node.config && Array.isArray(node.config.cases)) ? node.config.cases : [];
+  if (!cases.length && !node.config.default) { toast("先在属性面板配置分支（cases）后再进入分支体", "err"); return; }
+  const pop = document.createElement("div");
+  pop.id = "branchPicker";
+  pop.className = "branch-picker";
+  const r = anchorEl.getBoundingClientRect();
+  let rows = "";
+  cases.forEach((c) => {
+    rows += '<div class="bp-row"><button class="fbtn" data-b="' + esc(c) + '">case ' + esc(c) + ' ⤢</button></div>';
+  });
+  if (node.config.default) rows += '<div class="bp-row"><button class="fbtn" data-b="__default__">default 兜底分支 ⤢</button></div>';
+  pop.innerHTML = '<div class="bp-title">进入「' + esc(node.name) + '」分支体</div>' + rows +
+    '<div class="bp-hint">分支体为独立子图；执行时匹配到对应值则先跑该分支体再走对应出边</div>';
+  document.body.appendChild(pop);
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = r.left + r.width / 2 - pw / 2;
+  let top = r.bottom + 8;
+  left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+  if (top + ph > window.innerHeight - 8) top = r.top - ph - 8;
+  pop.style.left = left + "px"; pop.style.top = top + "px";
+  pop.querySelectorAll("button[data-b]").forEach((b) => {
+    b.onclick = () => {
+      const key = b.getAttribute("data-b");
+      const sub = key === "__default__" ? node.id + ":default" : node.id + ":case" + key;
+      closeBranchPicker();
+      enterCtx(sub);
+      toast("已进入「" + node.name + "」" + (key === "__default__" ? "default" : "case " + key) + " 分支体", "ok");
+    };
+  });
+  setTimeout(() => document.addEventListener("mousedown", branchPickerOutside), 0);
+}
 /* 节点悬浮子节点卡片：列出循环体 / TRUE+FALSE 分支内的子节点（含嵌套循环、判断），点击进入并定位 */
 function nodeChildSections(node) {
   const secs = [];
@@ -1834,9 +1953,85 @@ function defaultNodeConfig(type) {
   if (type === "loop_for_each") return { list_var: "items", max_iter: 1000 };
   if (type === "switch_case") return { expr: "", cases: ["case1", "case2"], default: true };
   if (type === "break") return { op: "break" };
+  // 86 轮：维护检测默认模板匹配 + 阈值 85（高于常规 80——误报代价是整 App 跳过）
+  if (type === "maintenance_check") return { kind: "match_image", image: "", match_threshold: 85 };
   if (type === "else_if") return { kind: "match_image", image: "" };
   return {};
 }
+/* ================= 83 轮：撤销/重做（P0-1 死亡三角修复） =================
+ * 模型：stack 保存状态快照序列，idx 指向当前；变更完成后 push（batch 批量模式只压一次）；
+ * undo/redo 移动 idx 并整体替换 graph/subgraphs（快照含子图树，删除可整树恢复）。
+ * 已知边界：属性面板文本级编辑、类型转换/恢复默认暂不入栈（v1 范围）。 */
+const UndoSys = {
+  stack: [], idx: -1, cap: 50, batch: false,
+  reset: function () { this.stack = []; this.idx = -1; },
+  push: function (label) {
+    if (this.batch) return;
+    try {
+      var st = JSON.stringify({ g: S.graph, s: S.subgraphs });
+      if (this.idx >= 0 && this.stack[this.idx].st === st) return;  // 无实际变化不压栈
+      this.stack.length = this.idx + 1;
+      this.stack.push({ st: st, label: label || "" });
+      if (this.stack.length > this.cap) this.stack.shift();
+      this.idx = this.stack.length - 1;
+    } catch (e) { /* 快照失败静默，不影响主流程 */ }
+  },
+  undo: function () {
+    if (this.idx <= 0) { toast("没有可撤销的操作", ""); return; }
+    this.idx--;
+    this._apply("已撤销" + (this.stack[this.idx + 1].label ? "：" + this.stack[this.idx + 1].label : ""));
+  },
+  redo: function () {
+    if (this.idx >= this.stack.length - 1) { toast("没有可重做的操作", ""); return; }
+    this.idx++;
+    this._apply("已重做" + (this.stack[this.idx].label ? "：" + this.stack[this.idx].label : ""));
+  },
+  _apply: function (msg) {
+    try {
+      var d = JSON.parse(this.stack[this.idx].st);
+      S.graph = d.g; S.subgraphs = d.s;
+      S.sel = null; S.multiSel = null;
+      rolesDirty(); markDirty(); renderProps(); render();
+      toast(msg, "ok");
+    } catch (e) { toast("撤销恢复失败：" + e.message, "err"); }
+  }
+};
+/* mutator 包装：变更完成后压栈（function 声明已提升，可安全提前引用） */
+(function () {
+  var _addNode = addNode;
+  addNode = function (type, x, y) { var n = _addNode(type, x, y); UndoSys.push("添加节点"); return n; };
+  var _addEdge = addEdge;
+  addEdge = function (f, t, l) { var before = ctxEdges().length; _addEdge(f, t, l); if (ctxEdges().length !== before) UndoSys.push("连线"); };
+  var _delNode = delNode;
+  delNode = function (id) { _delNode(id); UndoSys.push("删除节点"); };
+  var _delEdge = delEdge;
+  delEdge = function (eid) { _delEdge(eid); UndoSys.push("删除连线"); };
+  var _paste = pasteClipboard;
+  pasteClipboard = function () { _paste(); UndoSys.push("粘贴"); };
+})();
+/* 83 轮：子图树规模统计（删除保护用）——循环体/分支体节点数 */
+function subtreeNodeCount(nid) {
+  var keys = [nid];
+  Object.keys(S.subgraphs).forEach(function (k) {
+    if (k === nid || k.indexOf(nid + ":") === 0) keys.push(k);
+  });
+  var n = 0;
+  keys.forEach(function (k) { var sg = S.subgraphs[k]; if (sg && sg.nodes) n += sg.nodes.length; });
+  return n;
+}
+function undoGuardDelete(ids) {
+  /* 删除保护：含循环体/分支体的节点一次性 confirm（83 轮 P0-1）。返回 true=继续删除 */
+  var owners = [];
+  var total = 0;
+  ids.forEach(function (id) {
+    var c = subtreeNodeCount(id);
+    if (c > 0) { owners.push(nodeById(id) ? (nodeById(id).name || id) : id); total += c; }
+  });
+  if (!owners.length) return true;
+  var msg = "「" + owners.join("」「") + "」带有循环体/分支体（共 " + total + " 个内部节点），\n删除将一并删除这些内容。\n\n确定删除？（删除后可按 Ctrl+Z 撤销）";
+  return window.confirm(msg);
+}
+
 function addNode(type, x, y) {
   const nid = uid("n");
   const node = { id: nid, type, name: TYPE_META[type].label, pos: { x, y }, config: defaultNodeConfig(type) };
@@ -2952,7 +3147,58 @@ stage.addEventListener("mousedown", (e) => {
     S.sel = null; renderProps(); render();
   }
 });
-stage.addEventListener("contextmenu", (e) => e.preventDefault());
+stage.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  // 84 轮 P1-1：节点上右键弹上下文菜单（空白右键仍是框选，见 mousedown r63 注释）
+  const nodeEl = e.target.closest ? e.target.closest(".node") : null;
+  if (nodeEl && nodeEl.dataset && nodeEl.dataset.nid) {
+    const n = nodeById(nodeEl.dataset.nid);
+    if (n) { openNodeContextMenu(e, n, nodeEl); }
+  }
+});
+function closeNodeContextMenu() { const m = $("nodeCtxMenu"); if (m) m.remove(); }
+function openNodeContextMenu(e, n, el) {
+  closeNodeContextMenu(); closeBranchPicker();
+  const m = document.createElement("div");
+  m.id = "nodeCtxMenu";
+  m.style.cssText = "position:fixed;z-index:420;background:var(--paper);border:2px solid var(--ink);border-radius:8px;box-shadow:3px 3px 0 rgba(44,47,42,0.18);min-width:160px;overflow:hidden";
+  const items = [];
+  items.push('<button data-act="copy" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px">⧉ 复制</button>');
+  items.push('<button data-act="rename" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px">✎ 重命名</button>');
+  if (n.type.indexOf("loop_") === 0) items.push('<button data-act="enter" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px">⤢ 进入循环体</button>');
+  if (n.type === "if_else" || n.type === "condition" || n.type === "else_if") items.push('<button data-act="branch" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px">⤢ 进入分支体…</button>');
+  if (n.type === "switch_case") items.push('<button data-act="switch" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px">⤢ 进入分支体…</button>');
+  items.push('<button data-act="del" style="display:block;width:100%;text-align:left;padding:8px 14px;border:none;background:none;cursor:pointer;font-size:12.5px;color:var(--red,#c0392b)">🗑 删除</button>');
+  m.innerHTML = items.join("");
+  document.body.appendChild(m);
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  m.style.left = Math.min(e.clientX, window.innerWidth - mw - 8) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - mh - 8) + "px";
+  m.querySelectorAll("button").forEach((b) => {
+    b.onmouseenter = () => { b.style.background = "var(--ink-3, #ddd)"; };
+    b.onmouseleave = () => { b.style.background = "none"; };
+  });
+  m.querySelector('[data-act="copy"]').onclick = () => { S.sel = { kind: "node", id: n.id }; renderProps(); copySelected(); closeNodeContextMenu(); };
+  m.querySelector('[data-act="rename"]').onclick = () => {
+    S.sel = { kind: "node", id: n.id }; renderProps(); render();
+    setTimeout(() => { const inp = $("nName"); if (inp) { inp.focus(); inp.select(); } }, 60);
+    closeNodeContextMenu();
+  };
+  const enterBtn = m.querySelector('[data-act="enter"]');
+  if (enterBtn) enterBtn.onclick = () => { closeNodeContextMenu(); enterCtx(n.id); toast("已进入「" + n.name + "」循环体，添加节点后请连回「结束」节点", "ok"); };
+  const brBtn = m.querySelector('[data-act="branch"]');
+  if (brBtn) brBtn.onclick = () => { closeNodeContextMenu(); showBranchPicker(n, el); };
+  const swBtn = m.querySelector('[data-act="switch"]');
+  if (swBtn) swBtn.onclick = () => { closeNodeContextMenu(); showSwitchPicker(n, el); };
+  const delB = m.querySelector('[data-act="del"]');
+  if (delB) delB.onclick = () => { closeNodeContextMenu(); S.sel = { kind: "node", id: n.id }; if (undoGuardDelete([n.id])) delNode(n.id); };
+  setTimeout(() => document.addEventListener("mousedown", nodeCtxOutside), 0);
+}
+function nodeCtxOutside(ev) {
+  const m = $("nodeCtxMenu");
+  if (m && !m.contains(ev.target)) closeNodeContextMenu();
+  if (!m) document.removeEventListener("mousedown", nodeCtxOutside);
+}
   // r63: suppress browser gestures (right-drag / pinch) inside canvas only
   ["gesturestart", "gesturechange", "gestureend"].forEach((ev) => stage.addEventListener(ev, (e) => e.preventDefault()));
   stage.addEventListener("dragstart", (e) => e.preventDefault());
@@ -3059,23 +3305,34 @@ window.addEventListener("mouseup", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
   if (e.key === "Delete" || e.key === "Backspace") {
-    // 多选集合优先：整体删除
+    // 多选集合优先：整体删除（83 轮：批量压栈一次 + 含子图树时先确认）
     if (S.multiSel && S.multiSel.size) {
       const ids = [...S.multiSel];
+      if (!undoGuardDelete(ids)) return;
       clearMultiSelect();
+      UndoSys.batch = true;
       ids.forEach((id) => {
         const n = nodeById(id);
         if (n) delNode(id);
         else if (ctxEdges().some((x) => x.id === id)) delEdge(id);
       });
-      toast("已删除 " + ids.length + " 个选中项", "ok");
+      UndoSys.batch = false;
+      UndoSys.push("删除 " + ids.length + " 个选中项");
+      toast("已删除 " + ids.length + " 个选中项（Ctrl+Z 可撤销）", "ok");
       return;
     }
     if (S.sel) {
-      if (S.sel.kind === "node") delNode(S.sel.id);
+      if (S.sel.kind === "node") {
+        if (!undoGuardDelete([S.sel.id])) return;
+        delNode(S.sel.id);
+      }
       else delEdge(S.sel.id);
     }
   }
+  // 83 轮：Ctrl+Z 撤销 / Ctrl+Y（或 Ctrl+Shift+Z）重做
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); UndoSys.undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) { e.preventDefault(); UndoSys.redo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "z" || e.key === "Z")) { e.preventDefault(); UndoSys.redo(); return; }
   if (e.key === "Escape") {
     if (connect) { if (connect._tgtEl) connect._tgtEl.classList.remove("connect-tgt"); connect = null; $("ghost").innerHTML = ""; }
     S.restoreEid = null;
@@ -3126,6 +3383,7 @@ function bindNodeEvents(el, n) {
       window.removeEventListener("mouseup", up);
       el.classList.remove("dragging");
       markDirty();
+      if (n.pos.x !== start.nx || n.pos.y !== start.ny) UndoSys.push("移动节点");  // 83 轮
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
@@ -3136,6 +3394,8 @@ function bindNodeEvents(el, n) {
       toast("已进入「" + n.name + "」循环体，添加节点后请连回「结束」节点", "ok");
     } else if (n.type === "if_else" || n.type === "condition" || n.type === "else_if") {
       showBranchPicker(n, el);
+    } else if (n.type === "switch_case") {
+      showSwitchPicker(n, el);   // 84 轮 P1-2：多分支节点补分支体入口
     }
   });
   // 端口 hover 目标识别（备用；主识别在 mousemove 的 elementFromPoint）
@@ -4089,12 +4349,12 @@ function loopCondSummary(c) {
     if (c.kind === "region_match") return (c.region_match ? "匹配到区域即退出" : "匹配区域即退出（未圈选）") + " [" + mm + "]";
     if (c.kind === "match_image") return "匹配到图像即退出 [" + mm + "]";
     if (c.kind === "ocr_contains") return "OCR 出现文字即退出";
-    if (c.condition === true) return "恒真→反转=立即退出";
-    if (c.condition === false) return "恒假→反转=恒真循环";
+    if (c.condition === true) return "固定条件成立 → 不进入循环体，直接退出";
+    if (c.condition === false) return "固定条件不成立 → 无限循环（靠手动停止/迭代上限）";
     return "满足条件即退出";
   }
-  if (c.condition === true) return "恒真循环";
-  if (c.condition === false) return "恒假（立即退出）";
+  if (c.condition === true) return "固定条件成立 → 每轮都退出（相当于只执行一次）";
+  if (c.condition === false) return "固定条件不成立 → 从不执行循环体";
   if (c.kind === "region_match") return (c.region_match ? "区域匹配退出" : "区域匹配（未圈选）") + " [" + mm + "]";
   if (c.kind === "match_image") return "匹配退出 [" + mm + "]";
   if (c.kind === "ocr_contains") return "OCR 退出";
@@ -4133,6 +4393,16 @@ function configStatusHTML(n) {
     chips.push(cases.length ? { cls: "ok", txt: "cases:" + cases.length } : { cls: "warn", txt: "⚠ cases 为空" });
   } else if (t === "break") {
     chips.push({ cls: "ok", txt: "BREAK · 跳出循环" });
+  } else if (t === "maintenance_check") {
+    // 86 轮：维护检测状态 chip
+    const mk = c.kind || "match_image";
+    if (mk === "match_image") {
+      chips.push(c.image ? { cls: "ok", txt: "检测图 · 已配置" } : { cls: "warn", txt: "⚠ 未配置检测图像" });
+    } else if (mk === "region_match") {
+      chips.push((c.region_match && c.target_crop_b64) ? { cls: "ok", txt: "检测区域 · 已圈选" } : { cls: "warn", txt: "⚠ 未圈选检测区域" });
+    } else if (mk === "ocr_contains") {
+      chips.push(String(c.text || "").trim() ? { cls: "ok", txt: "检测文字 · " + String(c.text).slice(0, 12) } : { cls: "warn", txt: "⚠ 未填检测文字" });
+    }
   } else if (t === "else_if" || t === "condition" || t === "if_else") {
     const k = c.kind || "match_image";
     if (t === "else_if") chips.push({ cls: "ok", txt: "ELSE-IF" });
@@ -4205,6 +4475,8 @@ function propsTypeConvHTML(n) {
   const map = {
     loop_while: ["loop_do_while"],
     loop_do_while: ["loop_while"],
+    /* 85 轮备注：condition↔if_else 互转保留（隐藏类型的后门，供存量节点升级/降级）；
+       产品口径=新流程一律用 if_else（详见 TYPE_META 处 85 轮备注） */
     condition: ["if_else"],
     if_else: ["condition"],
     loop_for: ["loop_while"],
@@ -4268,7 +4540,7 @@ function propsInvertHTML(c) {
     "> 条件满足 → 继续循环</label>" +
     '<label><input type="radio" name="nLoopInvertMode" value="exit"' + (inv ? " checked" : "") +
     "> 条件满足 → 退出循环（等待目标出现）</label></div>" +
-    '<div class="hint">引擎字段 invert：退出=true / 继续=false；语义与旧版「匹配才退出」一致。</div></div>';
+    '<div class="hint">即旧版「匹配才退出」语义：识别到目标画面就结束循环，等不到就继续循环。</div></div>';
 }
 function ocrTestBtnHTML() {
   return '<div class="fgroup"><label>OCR 试识别（只读）</label>' +
@@ -4324,9 +4596,9 @@ function bindPropsUx(n, c) {
       if (t) t.classList.toggle("open");
     };
   });
-  /* C2 删除节点：无 confirm，与键盘 Delete 一致 */
+  /* C2 删除节点（83 轮：含循环体/分支体时先确认；Ctrl+Z 可撤销） */
   const delBtn = $("btnDelNode");
-  if (delBtn) delBtn.onclick = () => { delNode(n.id); };
+  if (delBtn) delBtn.onclick = () => { if (!undoGuardDelete([n.id])) return; delNode(n.id); };
   const ae = $("btnAddElseIf");
   if (ae) ae.onclick = () => addElseIfChain(n);
   const openFoot = $("openSubFoot");
@@ -4568,7 +4840,34 @@ function renderProps() {
       (c.tap_x != null ? '<button class="fbtn mini" id="btnClrTap">清除</button>' : "") + '</div>' +
       '<select id="tapTplSel" style="width:100%;margin-top:6px;padding:4px 6px;border:1.5px solid var(--ink);background:var(--paper-bright);border-radius:var(--radius-f);font-size:11.5px" title="从模板库选择定位图"><option value="">— 从模板库选择定位图 —</option></select>' +
       '<div id="tapTplList" class="tpllist" title="模板库：点击行选用，✕ 删除"></div>' +
-      '<div class="hint">在图上点击标记坐标；引擎执行以 tap_x/y 为准（标记即生效）。仅点击类动作需要此模块。</div></div>';
+      // 93 轮：点击位置来源——fixed=固定标注坐标（默认，老节点行为不变）；last_match=按最近识别位置点（动态优先）
+      '<div class="fgroup" style="margin-top:8px"><label>点击位置来源</label>' +
+      '<select id="nTapSrc" style="width:100%;padding:4px 6px;border:1.5px solid var(--ink);background:var(--paper-bright);border-radius:var(--radius-f);font-size:11.5px">' +
+      '<option value="fixed"' + ((c.tap_src || "fixed") === "fixed" ? " selected" : "") + '>固定标注坐标（默认）</option>' +
+      '<option value="last_match"' + (c.tap_src === "last_match" ? " selected" : "") + '>按最近识别位置点（动态优先）</option>' +
+      '</select>' +
+      // last_match 选中时的提示 + 可选偏移（写 config.tap_offset=[dx,dy]，留空不加）
+      '<div id="lastMatchExtras" style="display:' + (c.tap_src === "last_match" ? "block" : "none") + '">' +
+      '<div class="hint" style="margin-top:4px">动态优先：点在之前识别命中的目标中心位置。之前没有识别命中时将跳过本节点（不点静态坐标）。</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+      '<span style="font-size:11.5px;color:var(--ink-2)">位置偏移（可选）</span>' +
+      '<label style="font-size:11.5px;color:var(--ink-2)">dx</label>' +
+      '<input type="number" id="nTapOffX" value="' + (Array.isArray(c.tap_offset) ? c.tap_offset[0] : "") + '" placeholder="0" style="width:60px;padding:3px 5px;border:1.5px solid var(--ink);background:var(--paper-bright);border-radius:var(--radius-f);font-size:11.5px">' +
+      '<label style="font-size:11.5px;color:var(--ink-2)">dy</label>' +
+      '<input type="number" id="nTapOffY" value="' + (Array.isArray(c.tap_offset) ? c.tap_offset[1] : "") + '" placeholder="0" style="width:60px;padding:3px 5px;border:1.5px solid var(--ink);background:var(--paper-bright);border-radius:var(--radius-f);font-size:11.5px">' +
+      '</div>' +
+      '<div class="hint">偏移=在命中位置基础上再挪多少像素（正数往右/往下，负数往左/往上），两项都留空则不加偏移。</div>' +
+      // 94 轮：新鲜度上限（config.tap_max_age，正整数，留空=不限制）——命中距今超过 N 步视为过期走跳过
+      '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+      '<span style="font-size:11.5px;color:var(--ink-2)">新鲜度上限（可选）</span>' +
+      '<input type="number" id="nTapMaxAge" min="1" value="' + (c.tap_max_age != null ? c.tap_max_age : "") + '" placeholder="不限" style="width:60px;padding:3px 5px;border:1.5px solid var(--ink);background:var(--paper-bright);border-radius:var(--radius-f);font-size:11.5px">' +
+      '<span style="font-size:11.5px;color:var(--ink-2)">步</span>' +
+      '</div>' +
+      '<div class="hint">超过 N 步之前的识别位置视为过期（界面可能已切走），本节点将跳过不点。判定和点击紧挨着时可不填；隔了较多节点时建议填（如 5）。</div>' +
+      '</div>' +
+      '<div class="hint" id="tapHint">在图上点击标记坐标（作为固定标注坐标）；仅点击类动作需要此模块。选「固定标注坐标」时引擎以 tap_x/y 为准；选「按最近识别位置点」时执行以识别命中处为准（见下方说明）。</div>' +
+      '<div class="hint" id="tapHintLast" style="display:' + (c.tap_src === "last_match" ? "block" : "none") + '">已选「按最近识别位置点」：引擎优先点识别命中处（可用上面的偏移微调），上图的静态标注坐标仅作显示、执行时不使用。</div>' +
+      '</div>';
     } else if (isAmStartAction(c.action)) {
       const actPart = String(c.action || "").replace(/^am_start\s*/i, "").trim();
       html += '<div class="fgroup"><label>启动应用</label>' +
@@ -4599,6 +4898,30 @@ function renderProps() {
     html += '<div class="fgroup"><label>打印内容</label>' +
       '<textarea id="nPrintText" rows="3" style="width:100%;font-family:var(--mono);font-size:11.5px;padding:6px;border:2px solid var(--ink);border-radius:var(--radius-f);background:var(--paper-bright)" placeholder="执行到该节点时打印的文本">' + esc(c.text || "") + '</textarea>' +
       '<div class="hint">执行到该节点时把文本写入运行日志（[print] 前缀），主控制台「运行日志」可见；不操作设备，适合在步骤间加标记</div></div>';
+  }
+  // —— 86 轮：维护检测节点配置 ——
+  if (n.type === "maintenance_check") {
+    const mk = c.kind || "match_image";
+    html += '<div class="p-semantics">停服/维护止损：检测到「维护公告」画面时，本 App 剩余任务全部跳过（台账标注疑似停服）；未检测到则正常继续执行后续节点。建议放在流程第一个动作之前。</div>';
+    html += '<div class="fgroup"><label>检测方式</label><select id="nMaintKind" title="模板匹配=选一张公告图；区域圈选=框选公告出现区域；文字=公告上出现的固定文字">' +
+      '<option value="match_image"' + (mk === "match_image" ? " selected" : "") + '>识别图像（选模板图）</option>' +
+      '<option value="region_match"' + (mk === "region_match" ? " selected" : "") + '>区域圈选（框选公告区域）</option>' +
+      '<option value="ocr_contains"' + (mk === "ocr_contains" ? " selected" : "") + '>识别文字（公告固定文字）</option></select></div>';
+    if (mk === "match_image") {
+      html += matchImageSelectHTML("检测用图（维护公告截图）");
+    } else if (mk === "region_match") {
+      /* 89 轮修复：补 regionMatchSourceHTML——region_match 的唯一截图入口「截取模拟器画面并圈选」
+         （btnSnapCond）在这块里，86 轮只渲染了 regionMatchPropsHTML（状态区）导致按钮整个缺失。
+         与 condition/if_else/else_if 同构：SourceHTML（按钮）+ PropsHTML（区域状态/预览） */
+      html += regionMatchSourceHTML();
+      html += regionMatchPropsHTML(c, "maint");
+    } else {
+      html += '<div class="fgroup"><label>公告上的固定文字</label><input type="text" id="nMaintText" value="' + esc(c.text || "") + '" placeholder="例如：维护公告 / 停服更新" style="width:100%">' +
+        '<button type="button" class="fbtn mini" id="btnMaintOcrTest" style="margin-top:6px">试识别当前画面</button>' +
+        '<div class="hint">建议先用「OCR 调试」页确认公告上确实有这段文字（维护时才能截图验证）。</div></div>';
+    }
+    html += '<div class="fgroup"><label>匹配阈值</label><input type="number" id="nMaintTh" min="50" max="99" value="' + (c.match_threshold != null ? c.match_threshold : 85) + '" style="width:80px">%（默认 85——误报会跳过整个 App，建议不低于 80）</div>';
+    html += '<div class="hint" style="color:var(--red,#c0392b)">未配置检测依据时运行会报错（不会静默放行）；停服形式为白屏/黑屏时本节点检测不到，需靠后续版本的任务超时兜底。</div>';
   }
   if (n.type === "else_if") {
     html += '<div class="fgroup"><label>判定方式（上一级 FALSE 时）</label><select id="nKind">' +
@@ -4695,10 +5018,10 @@ function renderProps() {
       html += forEachWarnHTML();
     } else {
       html += '<div class="fgroup"><label>退出条件</label><select id="nLoopCond">' +
-        '<option value="mock" ' + (c.condition === true || c.condition === false ? "" : "selected") + '>运行时判定（匹配图/区域内匹配/OCR，下方选择）</option>' +
-        '<option value="true"' + (c.condition === true ? " selected" : "") + '>恒真（仅靠迭代上限保护）</option>' +
-        '<option value="false"' + (c.condition === false ? " selected" : "") + '>恒假（立即退出）</option></select></div>';
-      html += '<div class="fgroup"><label>退出判定方式（选择“运行时判定”时）</label><select id="nLoopKind">' +
+        '<option value="mock" ' + (c.condition === true || c.condition === false ? "" : "selected") + '>循环直到满足退出条件（下方选择怎么判定）</option>' +
+        '<option value="true"' + (c.condition === true ? " selected" : "") + '>一直循环，直到手动停止（受迭代上限保护）</option>' +
+        '<option value="false"' + (c.condition === false ? " selected" : "") + '>不执行循环体（一般不用）</option></select></div>';
+      html += '<div class="fgroup"><label>退出判定方式（选择"循环直到满足退出条件"时）</label><select id="nLoopKind" title="选择怎么判定：识别到目标画面 / 识别到文字 / 手写表达式">' +
         '<option value="match_image"' + (c.kind === "match_image" ? " selected" : "") + '>全屏匹配到图像则退出</option>' +
         '<option value="region_match"' + (c.kind === "region_match" ? " selected" : "") + '>指定区域内匹配到图像则退出（圈选）</option>' +
         '<option value="ocr_contains"' + (c.kind === "ocr_contains" ? " selected" : "") + '>OCR 出现文字则退出</option></select></div>';
@@ -4918,6 +5241,33 @@ function renderProps() {
       }
       const clr = $("btnClrTap");
       if (clr) clr.onclick = () => { delete c.tap_x; delete c.tap_y; markDirty(); renderProps(); };
+      // 93 轮：点击位置来源（config.tap_src）绑定——fixed 为默认语义，切回 fixed 时删字段，
+      // 老节点（无 tap_src 字段）行为完全不变；last_match 时显示偏移输入区
+      const tapSrcSel = $("nTapSrc");
+      if (tapSrcSel) tapSrcSel.onchange = () => {
+        if (tapSrcSel.value === "last_match") c.tap_src = "last_match";
+        else delete c.tap_src;
+        markDirty(); renderProps();
+      };
+      // 93 轮：动态偏移（config.tap_offset=[dx,dy]）——两项都留空则删字段（空=不加偏移）
+      const offX = $("nTapOffX"), offY = $("nTapOffY");
+      const syncTapOffset = () => {
+        if (!offX || !offY) return;
+        const dx = String(offX.value).trim(), dy = String(offY.value).trim();
+        if (dx === "" && dy === "") delete c.tap_offset;
+        else c.tap_offset = [dx === "" ? 0 : (parseInt(dx, 10) || 0), dy === "" ? 0 : (parseInt(dy, 10) || 0)];
+        markDirty();
+      };
+      if (offX) offX.onchange = syncTapOffset;
+      if (offY) offY.onchange = syncTapOffset;
+      // 94 轮：新鲜度上限（config.tap_max_age 正整数）——留空删字段（=不限制，93 轮原语义）
+      const ageInput = $("nTapMaxAge");
+      if (ageInput) ageInput.onchange = () => {
+        const v = String(ageInput.value).trim();
+        if (v === "" || (parseInt(v, 10) || 0) <= 0) delete c.tap_max_age;
+        else c.tap_max_age = parseInt(v, 10);
+        markDirty();
+      };
       // 46 轮：btnUseTap 处理已移除（按钮不存在）——applyTapMark 标记时仍自动同步 action 串
       // （44 轮机制保留），双保险：引擎真源 tap_x/y + 兼容字段 action 串同步
       // 从模板库选择定位图（与条件节点同一 GET /api/templates/<pkg> 数据源）
@@ -5151,6 +5501,8 @@ function renderProps() {
   // —— if-else 事件绑定 ——
   if (n.type === "if_else") {
     if ($("nKind")) if ($("nKind")) $("nKind").onchange = async (ev) => { c.kind = ev.target.value; markDirty(); render(); renderProps(); };
+
+
     if ($("nImage")) {
       fillTemplateUI(c, "nImage", "condThumb");
       $("btnUpImg").onclick = () => { S.activeImg = { kind: "tpl", nodeId: n.id }; $("fileImg").click(); };
@@ -5167,6 +5519,41 @@ function renderProps() {
   // —— print 事件绑定 ——
   if (n.type === "print") {
     if ($("nPrintText")) $("nPrintText").onchange = (ev) => { c.text = ev.target.value; markDirty(); render(); };
+  }
+  // —— 86 轮：维护检测事件绑定 ——
+  if (n.type === "maintenance_check") {
+    if ($("nMaintKind")) $("nMaintKind").onchange = (ev) => { c.kind = ev.target.value; markDirty(); renderProps(); };
+    if ($("nMaintText")) $("nMaintText").oninput = (ev) => { c.text = ev.target.value; markDirty(); };
+    if ($("nMaintTh")) $("nMaintTh").oninput = (ev) => { const v = parseInt(ev.target.value, 10); if (!isNaN(v)) c.match_threshold = Math.min(99, Math.max(50, v)); markDirty(); };
+    if ($("nImage")) {
+      fillTemplateUI(c, "nImage", "condThumb");
+      if ($("btnUpImg")) $("btnUpImg").onclick = () => { S.activeImg = { kind: "tpl", nodeId: n.id }; $("fileImg").click(); };
+      if ($("btnDelImg")) $("btnDelImg").onclick = () => delSelectedTemplate("nImage", c);
+    }
+    /* 89 轮修复：补「截取模拟器画面」绑定——86 轮漏抄 if_else 的 btnSnapCond 绑定（按钮渲染了但无
+       onclick=点了没反应）。必须在 if($("nImage")) 之外：region_match 模式面板无 nImage（39 轮同款坑，
+       2026-10-04 收敛注释已立牌）。snapAndCrop 两模式兼容：match_image→模板分支；region_match→区域直写 */
+    {
+      const sc = $("btnSnapCond");
+      if (sc) sc.onclick = () => snapAndCrop(c, n, { tplPrefix: "cond", btn: sc });
+    }
+    if ($("btnMaintOcrTest") && $("nMaintText")) {
+      $("btnMaintOcrTest").onclick = async () => {
+        $("btnMaintOcrTest").disabled = true;
+        try {
+          const kw = String($("nMaintText").value || "").trim();
+          if (!kw) { toast("先填写要检测的文字", "err"); return; }
+          const resp = await fetch("/api/device/screenshot");
+          if (!resp.ok) { toast("取设备截图失败（模拟器未连接？）", "err"); return; }
+          const blob = await resp.blob();
+          const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+          const r = await api("/api/ocr", "POST", { image_b64: String(b64).split(",")[1] });
+          const texts = (r && r.texts || []).map(t => t.text || "").join(" ");
+          toast(texts.includes(kw) ? "当前画面包含「" + kw + "」——若在维护时可保存此配置" : "当前画面不含「" + kw + "」（当前未维护属正常）", texts.includes(kw) ? "ok" : "");
+        } catch (e) { toast("试识别失败：" + e.message, "err"); }
+        finally { $("btnMaintOcrTest").disabled = false; }
+      };
+    }
   }
   // —— switch-case 事件绑定 ——
   if (n.type === "switch_case") {
@@ -5836,6 +6223,117 @@ if (localStorage.getItem("autofw_log_closed") === "1") {
 }
 $("btnValidate").onclick = doValidate;
 $("btnSave").onclick = () => saveFlow(false);
+
+/* ================= 81 轮：操作录制 → 插入当前画布 ================= */
+let recTimer = null;
+$("btnRecord").onclick = async () => {
+  if (S.run && S.run.running) { toast("工作流正在运行，请先停止再录制", "err"); return; }
+  try {
+    const r = await api("/api/record/start", "POST");
+    if (!r.ok) { toast(r.error || "无法开始录制", "err"); return; }
+    if (r.warn && r.warn.length) toast(r.warn[0], "");
+    $("recBanner").style.display = "flex";
+    if (recTimer) clearInterval(recTimer);
+    recTimer = setInterval(recPoll, 1000);
+    recPoll();
+  } catch (e) { toast("启动录制失败：" + e.message, "err"); }
+};
+async function recPoll() {
+  try {
+    const s = await api("/api/record/status");
+    const el = Math.floor(s.elapsed_s || 0);
+    const mm = String(Math.floor(el / 60)).padStart(2, "0");
+    const ss = String(el % 60).padStart(2, "0");
+    $("recInfo").textContent = "⏺ 录制中 " + mm + ":" + ss + " · 已捕获 " +
+      (s.gestures || 0) + " 个手势" +
+      (s.auto_stopped ? "（" + (s.auto_reason || "已达上限") + "，请点「停止并插入」）" : "");
+  } catch (e) { /* 轮询失败静默，下秒重试 */ }
+}
+$("btnRecStop").onclick = () => recFinish(false);
+$("btnRecCancel").onclick = () => recFinish(true);
+async function recFinish(discard) {
+  if (recTimer) { clearInterval(recTimer); recTimer = null; }
+  $("recBanner").style.display = "none";
+  try {
+    const r = await api("/api/record/stop", "POST", { discard: !!discard });
+    if (!r.ok) { toast(r.error || "停止失败", "err"); return; }
+    if (r.discarded) { toast("已放弃本次录制", ""); return; }
+    const gs = r.gestures || [];
+    if (!gs.length) {
+      toast("未捕获到手势——未识别到触控事件" +
+        (r.device ? "（设备：" + r.device + "）" : "（未识别到触控设备）") +
+        (r.multitouch_ignored ? "；检测到多指操作已忽略" : ""), "err");
+      return;
+    }
+    if (r.multitouch_ignored) toast("检测到多点触控，多指部分已忽略", "");
+    if (r.auto_stop_reason) toast(r.auto_stop_reason, "");
+    insertRecordedNodes(gs);
+  } catch (e) { toast("停止录制失败：" + e.message, "err"); }
+}
+/* 智能插入：选中节点→其后；否则接链尾（有 end 节点接它前面，无 end 接 x 最大节点后）。
+ * 均作用于当前画布上下文（主画布/循环体内所见即所得）。 */
+function insertRecordedNodes(gs) {
+  UndoSys.batch = true;   // 83 轮：整次插入一个撤销步
+  const items = [];
+  for (const g of gs) {
+    if (g.kind === "tap") {
+      items.push({ name: "点击 (" + g.x + ", " + g.y + ")", action: "adb_tap " + g.x + " " + g.y });
+    } else if (g.kind === "swipe") {
+      items.push({ name: "滑动 (" + g.x1 + "," + g.y1 + ")→(" + g.x2 + "," + g.y2 + ")",
+                   action: "swipe " + g.x1 + " " + g.y1 + " " + g.x2 + " " + g.y2 + " " + g.dur });
+    } else if (g.kind === "wait") {
+      items.push({ name: "等待 " + (g.ms / 1000).toFixed(1) + "s", action: "wait " + g.ms });
+    }
+  }
+  if (!items.length) { UndoSys.batch = false; toast("没有可插入的内容", "err"); return; }
+  const nodes = ctxNodes(), edges = ctxEdges();
+
+  // 定位锚点与后继边
+  let anchor = null, succEdge = null;
+  if (S.sel && S.sel.kind === "node") {
+    anchor = nodes.find(n => n.id === S.sel.id) || null;
+    if (anchor) succEdge = edges.find(e => e.from === anchor.id) || null;
+  }
+  if (!anchor) {
+    const endN = nodes.find(n => n.type === "end");
+    if (endN) {
+      const into = edges.find(e => e.to === endN.id);
+      if (into) {
+        anchor = nodes.find(n => n.id === into.from) || null;
+        succEdge = anchor ? into : null;   // 新链尾将重新接回 end
+      } else {
+        anchor = endN;                     // 空链只有 end：先建节点再接 end（无出边可拆）
+      }
+    } else {
+      for (const n of nodes) if (!anchor || n.pos.x > anchor.pos.x) anchor = n;
+      if (anchor) succEdge = edges.find(e => e.from === anchor.id) || null;
+    }
+  }
+  if (succEdge) delEdge(succEdge.id);
+
+  // 逐个创建节点（复用 addNode：uid/脏标记/渲染/选中）
+  let prevId = anchor ? anchor.id : null;
+  let baseX = anchor ? anchor.pos.x : 0, baseY = anchor ? anchor.pos.y : -20;
+  if (!anchor) { const s0 = nodes.find(n => n.type === "start"); if (s0) { baseX = s0.pos.x; baseY = s0.pos.y; prevId = s0.id; } }
+  const created = [];
+  items.forEach((it, i) => {
+    const nd = addNode("action", baseX + 220 * (i + 1), baseY);
+    nd.name = it.name;
+    nd.config.action = it.action;
+    created.push(nd);
+    if (prevId) addEdge(prevId, nd.id);
+    prevId = nd.id;
+  });
+  // 链尾接回原后继
+  if (created.length && succEdge) addEdge(created[created.length - 1].id, succEdge.to);
+
+  const nAct = items.filter(i => !i.action.startsWith("wait ")).length;
+  UndoSys.batch = false;
+  UndoSys.push("插入录制节点");
+  toast("已插入 " + created.length + " 个节点（" + nAct + " 个操作 + " +
+        (created.length - nAct) + " 个等待，Ctrl+Z 可撤销）——记得保存", "ok");
+  render();
+}
 $("btnEdgeMode").onclick = () => setEdgeMode(edgeMode() === "legacy" ? "curve-avoid" : "legacy");
 // 初始化按钮文案
 $("btnEdgeMode").textContent = edgeMode() === "legacy" ? "线型:旧版" : "线型:曲线";
@@ -6477,6 +6975,8 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
       more.addEventListener("click", function (e) { e.stopPropagation(); mm.classList.toggle("open"); });
       document.addEventListener("click", function () { mm.classList.remove("open"); });
     }
+    var bv = document.getElementById("btnVersions");
+    if (bv) bv.addEventListener("click", function () { openVersionsDialog(); });
     refreshViewToggles();
   }
   function refreshViewToggles() {
@@ -6485,6 +6985,58 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
     if (!wrap) return;
     if (cl) { cl.classList.toggle("active", wrap.classList.contains("collapse-r")); cl.textContent = wrap.classList.contains("collapse-r") ? "展开代码" : "收起代码"; }
     if (cr) { cr.classList.toggle("active", wrap.classList.contains("collapse-l")); cr.textContent = wrap.classList.contains("collapse-l") ? "展开画布" : "收起画布"; }
+  }
+
+  // —— 83 轮 P0-1：版本历史查看与回滚（数据源=服务端 versions 前 20 版快照） ——
+  async function openVersionsDialog() {
+    var d;
+    try { d = await api(flowBase()); } catch (e) { toast("读取版本历史失败：" + e.message, "err"); return; }
+    var vers = (d && d.versions) || [];
+    if (!vers.length) { toast("暂无历史版本", ""); return; }
+    var old = document.getElementById("verDialog");
+    if (old) old.remove();
+    var box = document.createElement("div");
+    box.id = "verDialog";
+    box.style.cssText = "position:fixed;inset:0;z-index:500;background:rgba(44,47,42,0.45);display:flex;align-items:center;justify-content:center;";
+    var rows = "";
+    var seenVer = {};   // 83 轮：服务端会把主版本动态追加到 versions 尾部，去重
+    for (var i = vers.length - 1; i >= 0; i--) {
+      var v = vers[i];
+      if (seenVer[v.version]) continue;
+      seenVer[v.version] = true;
+      rows += '<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px dashed var(--ink-3, #ccc);">' +
+        '<span style="font-family:monospace;min-width:52px">v' + v.version + '</span>' +
+        '<span style="flex:1;color:var(--ink-2,#555);font-size:12.5px">' + (v.updated || "") +
+        ' · ' + (v.graph && v.graph.nodes ? v.graph.nodes.length : 0) + ' 节点</span>' +
+        '<button class="tbtn" data-ver="' + v.version + '" style="padding:2px 10px">恢复到画布</button></div>';
+    }
+    box.innerHTML = '<div style="background:var(--paper,#fff);border:2px solid var(--ink,#2C2F2A);border-radius:10px;box-shadow:3px 3px 0 rgba(44,47,42,0.18);width:520px;max-height:70vh;display:flex;flex-direction:column">' +
+      '<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:2px solid var(--ink,#2C2F2A)">' +
+      '<b>🕘 版本历史（最近 ' + vers.length + ' 版）</b><span style="flex:1"></span>' +
+      '<button class="tbtn" id="verClose" style="padding:2px 10px">×</button></div>' +
+      '<div style="overflow:auto">' + rows + '</div>' +
+      '<div style="padding:8px 14px;color:var(--ink-3,#999);font-size:11.5px">恢复只改画布内容，确认无误后点「保存」才会写入服务器；当前画布未保存的改动会被覆盖。</div></div>';
+    document.body.appendChild(box);
+    box.querySelector("#verClose").onclick = function () { box.remove(); };
+    box.addEventListener("click", function (e) { if (e.target === box) box.remove(); });
+    box.querySelectorAll("button[data-ver]").forEach(function (btn) {
+      btn.onclick = function () {
+        var ver = parseInt(btn.getAttribute("data-ver"), 10);
+        var snap = vers.find(function (v) { return v.version === ver; });
+        if (!snap) return;
+        var cnt = snap.graph && snap.graph.nodes ? snap.graph.nodes.length : 0;
+        if (!window.confirm("将画布恢复到 v" + ver + "（" + cnt + " 节点）？\n当前画布未保存的改动将被覆盖（可先撤销本恢复）。")) return;
+        UndoSys.batch = true;
+        S.graph = JSON.parse(JSON.stringify(snap.graph));
+        S.subgraphs = JSON.parse(JSON.stringify(snap.subgraphs || {}));
+        S.sel = null; S.multiSel = null;
+        UndoSys.batch = false;
+        UndoSys.push("恢复到 v" + ver);
+        rolesDirty(); markDirty(); renderProps(); render();
+        box.remove();
+        toast("已恢复到 v" + ver + " 的画布内容——确认无误后点「保存」落盘", "ok");
+      };
+    });
   }
 
   // —— G1 双向同步状态机（conflict 弹两侧摘要，覆盖前强制确认） ——
@@ -6548,8 +7100,14 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
     // 注册 2：window 级 keydown（与 Monaco addCommand 并存，保证降级态/聚焦外也能触发）
     window.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
-        e.preventDefault(); syncBoth();
+        e.preventDefault();
+        if (!S.dirty) { toast("无改动，无需保存", ""); return; }   // 83 轮：避免无意义写版本
+        saveFlow(false);   // 83 轮 P0-2：Ctrl+S 改为真保存（同步走更多菜单「🔄同步到代码」）
       }
+      // 83 轮 P0-2：未保存改动时拦截页面关闭（自动保存 2s 防抖窗口内的改动不再静默丢失）
+      window.addEventListener("beforeunload", function (ev) {
+        if (S.dirty) { ev.preventDefault(); ev.returnValue = ""; }
+      });
     });
   }
 
@@ -6779,10 +7337,10 @@ adoptRunning(); // 45d 轮：接管可能存在的服务端运行（不 await，
     window.__monacoEditor = ed; window.__monacoReady = true;
     document.getElementById("dslFallback").style.display = "none";
     // G3 注册 1：Monaco addCommand
-    ed.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KEY_S, function () { syncBoth(); });
+    ed.addCommand(window.monaco.KeyMod.CtrlCmd | window.monaco.KeyCode.KEY_S, function () { saveFlow(false); });  // 83 轮 P0-2
     var draftTimer = null;
     ed.onDidChangeModelContent(function () {
-      applyMarkers(); setStatus("代码已改（Ctrl+S 同步）");
+      applyMarkers(); setStatus("代码已改（点保存落盘；同步走「🔄同步到代码」）");
       if (!_suppress) {
         _codeAuthored = true;
         // UX-12 修复：800ms 防抖写代码草稿，刷新可恢复

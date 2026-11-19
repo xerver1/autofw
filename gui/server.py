@@ -13,11 +13,13 @@ import io
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # autofw 根
+sys.path.insert(0, BASE)  # 81 轮：操作录制（core/recorder.py，懒导入）
 PY = os.path.join(BASE, ".venv", "Scripts", "python.exe")
 STATE = os.path.join(BASE, "state")
 PORT = 8765
@@ -722,6 +724,7 @@ def run_all_start(pkg, from_task=None):
         session = {"pkg": pkg, "running": True, "task_index": 0,
                    "task_id": None, "task_name": None, "total": len(tasks),
                    "done": [], "error": None, "stop": False, "runner": None,
+                   "started_at": time.time(),   # 88 轮：会话开始时间戳（控制台已运行时长组件）
                    "last_log": "准备执行 %d 个勾选任务" % len(tasks)}
         _run_all = session
     threading.Thread(target=_run_all_worker, args=(pkg, tasks, session), daemon=True).start()
@@ -1384,6 +1387,16 @@ def flow_pause():
     return {"ok": False, "error": "没有正在运行的工作流"}
 
 
+def _ts_to_epoch(ts_str):
+    """88 轮：FlowRunner.started（"%Y-%m-%d %H:%M:%S.%f" 去尾 3 位毫秒字符串）转 epoch 秒。
+    解析失败返回 None（调用方用 time.time() 兜底）。"""
+    try:
+        from datetime import datetime as _dt2
+        return _dt2.strptime(ts_str, "%Y-%m-%d %H:%M:%S.%f").timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
 def flow_run_status():
     """运行状态：单任务正在运行 → 原单任务响应；否则存在 run-all 会话 → {mode:run_all,…}。"""
     with _run_all_lock:
@@ -1404,7 +1417,11 @@ def flow_run_status():
                 "total": s.get("total", 0), "done": s.get("done", []),
                 "last_log": s.get("last_log", ""), "error": s.get("error"),
                 "paused": bool(runner and getattr(runner, "paused", False)),
-                "nodes": r_nodes, "events": r_events}
+                "nodes": r_nodes, "events": r_events,
+                # 88 轮：会话开始时间戳（前端计算已运行时长）；旧会话无此键则退回 runner.started
+                "started_at": s.get("started_at")
+                              or (getattr(runner, "started", None) and _ts_to_epoch(runner.started))
+                              or time.time()}
     with _flow_runner_lock:
         if _flow_runner is None:
             return {"running": False}
@@ -1413,6 +1430,8 @@ def flow_run_status():
         return {"running": not done, "paused": getattr(r, "paused", False),
                 "steps": r.steps, "events": r.events[-50:],
                 "nodes": r.node_recs[-50:],
+                # 88 轮：单任务开始时间戳（runner.run() 入口打的 started）
+                "started_at": (getattr(r, "started", None) and _ts_to_epoch(r.started)) or time.time(),
                 "task_id": getattr(r, "task_id", None), "task_name": getattr(r, "task_name", None),
                 "pkg": (r.flow.get("pkg") if isinstance(r.flow, dict) else None) or None}
 
@@ -2160,6 +2179,86 @@ def stop_pipeline():
         return {"ok": True, "msg": "已停止"}
 
 
+# ---------- 81 轮：操作录制（core/recorder.py 的路由薄壳） ----------
+_rec_session = None
+_rec_lock = threading.Lock()
+
+
+def _rec_anything_running():
+    """三路运行态互斥检查（子进程流水线 / run-all 批量 / 单任务 Runner）。"""
+    if proc is not None and proc.poll() is None:
+        return "流水线正在运行，请先停止再录制"
+    with _run_all_lock:
+        if _run_all is not None and _run_all.get("running"):
+            return "批量执行正在运行，请先停止再录制"
+    with _flow_runner_lock:
+        if _flow_runner is not None and not getattr(_flow_runner, "_done", True):
+            return "工作流正在运行，请先停止再录制"
+    return None
+
+
+def record_start():
+    """开始录制：守卫（运行态互斥 + adb 连通 + 窗口最小化提示）→ 起监听会话。"""
+    global _rec_session
+    busy = _rec_anything_running()
+    if busy:
+        return {"ok": False, "error": busy}
+    with _rec_lock:
+        if _rec_session is not None and _rec_session.status()["recording"]:
+            return {"ok": False, "error": "已有录制进行中"}
+    # adb 连通性（轻探测）
+    try:
+        r = subprocess.run([ADB_EXE, "-s", ADB_ADDR, "get-state"],
+                           capture_output=True, text=True, timeout=5)
+        if "device" not in r.stdout.lower():
+            return {"ok": False, "error": "ADB 未连接（%s）——请确认模拟器已启动并在控制台点「连接 adb」" % ADB_ADDR}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": "ADB 检查失败：%s" % e}
+    # 模拟器窗口最小化提示（不阻断——宿主渲染暂停时画面白屏，用户可能愿意先盲录）
+    warn = []
+    try:
+        rc, out, _err = _mumu_run(["info", "-v", "0"], timeout=5)
+        if rc == 0 and out:
+            hwnd = int(json.loads(out).get("main_wnd", "0") or "0", 16)
+            if hwnd:
+                import ctypes
+                if ctypes.windll.user32.IsIconic(hwnd):
+                    warn.append("模拟器窗口处于最小化（宿主渲染已暂停，画面可能白屏）——建议先恢复窗口再录制")
+    except Exception:  # noqa: BLE001
+        pass
+    from core.recorder import RecorderSession
+    sess = RecorderSession(adb_exe=ADB_EXE, adb_addr=ADB_ADDR,
+                           state_dir=os.path.join(STATE, "recordings"))
+    err = sess.start()
+    if err:
+        return {"ok": False, "error": err}
+    with _rec_lock:
+        _rec_session = sess
+    return {"ok": True,
+            "msg": "录制已开始——请在模拟器中操作，完成后回编辑器点「停止并插入」",
+            "warn": warn}
+
+
+def record_stop(discard=False):
+    global _rec_session
+    with _rec_lock:
+        sess = _rec_session
+    if sess is None:
+        return {"ok": False, "error": "没有进行中的录制"}
+    result = sess.stop(discard=discard)
+    with _rec_lock:
+        _rec_session = None
+    return result
+
+
+def record_status():
+    with _rec_lock:
+        sess = _rec_session
+    if sess is None:
+        return {"recording": False, "gestures": 0}
+    return sess.status()
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -2252,6 +2351,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
         elif self.path == "/api/status":
             self._send(200, json.dumps(status_payload(), ensure_ascii=False))
+        elif self.path == "/api/record/status":     # 81 轮：操作录制状态轮询
+            self._send(200, json.dumps(record_status(), ensure_ascii=False))
         elif self.path == "/api/pipeline/live":
             self._send(200, json.dumps(pipeline_live(), ensure_ascii=False))
         elif self.path == "/api/failures":
@@ -2437,6 +2538,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(flow_stop(), ensure_ascii=False))
         elif self.path == "/api/flows/pause":
             self._send(200, json.dumps(flow_pause(), ensure_ascii=False))
+        elif self.path == "/api/record/start":      # 81 轮：操作录制
+            self._send(200, json.dumps(record_start(), ensure_ascii=False))
+        elif self.path == "/api/record/stop":
+            payload, err = self._read_json_body()
+            if err:
+                self._send(400, json.dumps({"ok": False, "error": err}, ensure_ascii=False))
+            else:
+                self._send(200, json.dumps(record_stop(bool(payload.get("discard"))),
+                                            ensure_ascii=False))
         elif self.path == "/api/mumu/start":
             self._send(200, json.dumps(mumu_start(), ensure_ascii=False))
         elif self.path == "/api/mumu/stop":

@@ -400,7 +400,7 @@ try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.document
       title="在新窗口打开该任务的画布，并自动定位/跟随运行中的节点">⤢ 跳转到运行中任务的画布</button>
   </div>
   <div class="card anim-block d3">
-    <h3>待手动处理 <span style="color:var(--warn);font-size:11px" id="failCount"></span><button class="btn ghost sm" id="btnClearFail" type="button" title="将全部待处理记录标记为已处理（保留历史审计）" style="margin-left:8px">清理信息</button></h3>
+    <h3>待手动处理 <span style="color:var(--warn);font-size:11px" id="failCount"></span><button class="btn ghost sm" id="btnFailHistory" type="button" title="显示已处理/已忽略的历史记录" style="margin-left:8px">显示历史</button><button class="btn ghost sm" id="btnClearFail" type="button" title="归档并清空全部记录（含已处理/已忽略历史，审计保存到 failures_archive.json）" style="margin-left:8px">清理信息</button></h3>
     <div id="failures"><span class="empty">加载中…</span></div>
   </div>
 </div>
@@ -889,23 +889,42 @@ async function mumuAction(act) {
 
 /* ================= 待手动处理（失败任务） ================= */
 const STATUS_LABEL = { pending: "待处理", handled: "已处理", ignored: "已忽略", retried: "已重试" };
+const ACTION_LABEL = Object.assign({}, STATUS_LABEL, { created: "已创建", cleared: "已清理" });
+/* 87 轮：默认只看待处理记录；「显示历史」开关切换已处理/已忽略记录的可见性 */
+let failShowHistory = false;
+try { failShowHistory = localStorage.getItem("autofw_fail_history") === "1"; } catch (e) { /* localStorage 不可用则忽略 */ }
 async function refreshFailures() {
   try {
     const d = await api("/api/failures", {}, 6000);
     $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 累计 " + d.count + "）";
     const clearBtn = $("btnClearFail");
     if (clearBtn) {
-      const none = !d.failures || !d.failures.length || !(d.pending || 0);
-      clearBtn.disabled = none;
-      clearBtn.title = none ? "暂无待处理记录" : "将全部待处理记录标记为已处理（保留历史审计）";
+      /* 87 轮修复：只要还有任何记录（含历史）清理按钮就可点——原条件"无待处理就禁用"
+         会让"全部忽略后待处理=0"时清理按钮永久灰掉，记录清不掉 */
+      const hasAny = d.failures && d.failures.length;
+      clearBtn.disabled = !hasAny;
+      clearBtn.title = hasAny ? "归档并清空全部记录（含已处理/已忽略历史，审计保存到 failures_archive.json）"
+                              : "暂无任何记录";
+    }
+    /* 「显示历史」按钮文案随状态切换 */
+    const histBtn = $("btnFailHistory");
+    if (histBtn) {
+      histBtn.textContent = failShowHistory ? "隐藏历史" : "显示历史";
+      histBtn.title = failShowHistory ? "只显示待处理记录" : "显示已处理/已忽略的历史记录";
     }
     const box = $("failures");
     if (!d.failures || !d.failures.length) {
       box.innerHTML = '<span class="empty">暂无失败任务</span>';
       return;
     }
+    /* 87 轮：默认只渲染待处理记录（处理过的不消失数据、只消失在列表外，历史开关可回看） */
+    const visible = d.failures.filter((f) => failShowHistory || f.status === "pending");
+    if (!visible.length) {
+      box.innerHTML = '<span class="empty">暂无待处理记录' + (failShowHistory ? "" : "（可点「显示历史」回看已处理的记录）") + '</span>';
+      return;
+    }
     box.innerHTML = "";
-    d.failures.slice(0, 20).forEach((f) => {
+    visible.slice(0, 20).forEach((f) => {
       const row = document.createElement("div");
       row.className = "fail-row";
       const tasks = Array.isArray(f.task) ? f.task.join(",") : f.task;
@@ -920,7 +939,7 @@ async function refreshFailures() {
             '<button class="btn sm ghost" data-a="handled">已处理</button>' +
             '<button class="btn sm ghost" data-a="ignored">忽略</button>' +
             '<button class="btn sm ghost" data-a="retried">重试</button>' :
-            '<span class="empty">' + esc(((f.history && f.history[f.history.length - 1]) || {}).action || "") + '</span>') +
+            '<span class="empty">' + esc(ACTION_LABEL[((f.history && f.history[f.history.length - 1]) || {}).action] || "已处理") + '</span>') +
         '</div>';
       row.querySelectorAll("[data-a]").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -941,9 +960,16 @@ async function refreshFailures() {
   }
 }
 
-/* 一键清理：把全部待处理失败记录批量标记为已处理（服务端保留审计历史） */
+/* 「显示历史」开关：切换待处理/全部记录的可见性（记住选择） */
+$("btnFailHistory").addEventListener("click", () => {
+  failShowHistory = !failShowHistory;
+  try { localStorage.setItem("autofw_fail_history", failShowHistory ? "1" : "0"); } catch (e) { /* 忽略 */ }
+  refreshFailures();
+});
+
+/* 一键清理：归档备份后清空【全部】记录（含已处理/已忽略历史，与清理信息按钮同语义） */
 $("btnClearFail").addEventListener("click", async () => {
-  if (!confirm("确认清空待手动处理列表？（全部标记为已处理，保留历史记录）")) return;
+  if (!confirm("确认清理全部记录？（含已处理/已忽略历史，服务端先归档到 failures_archive.json 再清空）")) return;
   const btn = $("btnClearFail");
   btn.disabled = true;
   try {

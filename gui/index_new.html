@@ -596,7 +596,7 @@ try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.document
 <div class="nb-heavy nb-block">
   <div class="nb-heavy-title">当前运行</div>
   <div class="nb-heavy-value" id="heavyTask">—</div>
-  <div class="nb-heavy-sub"><span id="heavyIdle" hidden>空闲——点「启动流水线」后在此查看进度</span><span id="heavyRun">已完成 <b id="doneCount">0</b> / 共 <b id="heavyTotal">—</b> 项 · 进度 <b id="heavyPct">—</b></span></div>
+  <div class="nb-heavy-sub"><span id="heavyIdle" hidden>空闲——点「启动流水线」后在此查看进度</span><span id="heavyRun">已完成 <b id="doneCount">0</b> / 共 <b id="heavyTotal">—</b> 项 · 进度 <b id="heavyPct">—</b> · 已运行 <b id="heavyElapsed">—</b></span></div>
 </div>
 
 <div class="nb-card nb-block">
@@ -609,7 +609,7 @@ try { if (localStorage.getItem("autofw_anim_enabled") === "0") document.document
 </div>
 
 <div class="nb-card nb-block">
-  <h3>待手动处理 <span style="color:var(--err);font-size:12px" id="failCount"></span><button class="nb-btn nb-btn-ghost" id="btnClearFail" type="button" title="将全部待处理记录标记为已处理" style="margin-left:8px;padding:4px 12px">清理信息</button></h3>
+  <h3>待手动处理 <span style="color:var(--err);font-size:12px" id="failCount"></span><button class="nb-btn nb-btn-ghost" id="btnFailHistory" type="button" title="显示已处理/已忽略的历史记录" style="margin-left:8px;padding:4px 12px">显示历史</button><button class="nb-btn nb-btn-ghost" id="btnClearFail" type="button" title="归档并清空全部记录（含已处理/已忽略历史，审计保存到 failures_archive.json）" style="margin-left:8px;padding:4px 12px">清理信息</button></h3>
   <div id="failures"><span class="nb-sub">加载中…</span></div>
 </div>
 
@@ -866,6 +866,23 @@ document.addEventListener("selectionchange", () => {
 /* ================= 状态行（3 秒轮询） ================= */
 const runAllUi = { pkg: null, running: false, taskIndex: 0, total: 0, taskId: null };
 
+/* 88 轮：已运行时长计时器——refresh 轮询校准起点（startedAtMs），每秒本地走表，
+   不依赖轮询频率；空闲自动清零。暂停按墙钟照走（首版约定，不记账）。 */
+const runTimer = { active: false, startedAtMs: 0 };
+function fmtElapsed(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
+  return h > 0 ? h + ":" + mm + ":" + ss : m + ":" + ss;
+}
+function tickRunTimer() {
+  const el = $("heavyElapsed");
+  if (!el) return;
+  if (!runTimer.active) { el.textContent = "—"; return; }
+  el.textContent = fmtElapsed((Date.now() - runTimer.startedAtMs) / 1000);
+}
+setInterval(tickRunTimer, 1000);
+
 async function refresh() {
   try {
     const s = await api("/api/status");
@@ -950,6 +967,21 @@ async function refresh() {
     // 2026-10-24 UX 修复：空闲时进度行改人话（"共 — 项"的破折号易误读成"一"）
     if ($("heavyIdle")) $("heavyIdle").hidden = !!(run || raRun);
     if ($("heavyRun")) $("heavyRun").hidden = !(run || raRun);
+    // 88 轮：已运行时长——三种运行形态都取 started_at 校准起点；空闲清零
+    // （run-all/单任务来自 /api/flows/runstatus；子进程流水线暂无时间戳，先用本地"发现运行"时刻兜底）
+    {
+      const sa = (raRun || singleRun) ? (ra && ra.started_at) : null;
+      const saMs = sa ? Math.round(sa * 1000) : null;
+      if (anyRun) {
+        if (saMs && (!runTimer.active || Math.abs(saMs - runTimer.startedAtMs) > 1500)) {
+          runTimer.startedAtMs = saMs;   // 服务端时间戳与本地偏差>1.5s 才校准，防抖
+        }
+        if (!runTimer.active) { runTimer.active = true; if (!saMs) runTimer.startedAtMs = Date.now(); }
+      } else {
+        runTimer.active = false;
+      }
+      tickRunTimer();
+    }
     // 61 轮：流水线实时任务/节点（/api/status.live ← state/pipeline_live.json）+ 跳转画布
     const lv = s.live || {};
     const lt = $("liveTask"), ln = $("liveNode"), gb = $("btnGoLive");
@@ -1115,23 +1147,42 @@ async function mumuAction(act) {
 
 /* ================= 待手动处理（失败任务） ================= */
 const STATUS_LABEL = { pending: "待处理", handled: "已处理", ignored: "已忽略", retried: "已重试" };
+const ACTION_LABEL = Object.assign({}, STATUS_LABEL, { created: "已创建", cleared: "已清理" });
+/* 87 轮：默认只看待处理记录；「显示历史」开关切换已处理/已忽略记录的可见性 */
+let failShowHistory = false;
+try { failShowHistory = localStorage.getItem("autofw_fail_history") === "1"; } catch (e) { /* localStorage 不可用则忽略 */ }
 async function refreshFailures() {
   try {
     const d = await api("/api/failures", {}, 6000);
     $("failCount").textContent = "（待处理 " + (d.pending || 0) + " / 累计 " + (d.count == null ? "—" : d.count) + "）";   /* P2-3 兜底 */
     const clearBtn = $("btnClearFail");
     if (clearBtn) {
-      const none = !d.failures || !d.failures.length || !(d.pending || 0);
-      clearBtn.disabled = none;
-      clearBtn.title = none ? "暂无待处理记录" : "将全部待处理记录标记为已处理（保留历史审计）";
+      /* 87 轮修复：只要还有任何记录（含历史）清理按钮就可点——原条件"无待处理就禁用"
+         会让"全部忽略后待处理=0"时清理按钮永久灰掉，记录清不掉 */
+      const hasAny = d.failures && d.failures.length;
+      clearBtn.disabled = !hasAny;
+      clearBtn.title = hasAny ? "归档并清空全部记录（含已处理/已忽略历史，审计保存到 failures_archive.json）"
+                              : "暂无任何记录";
+    }
+    /* 「显示历史」按钮文案随状态切换 */
+    const histBtn = $("btnFailHistory");
+    if (histBtn) {
+      histBtn.textContent = failShowHistory ? "隐藏历史" : "显示历史";
+      histBtn.title = failShowHistory ? "只显示待处理记录" : "显示已处理/已忽略的历史记录";
     }
     const box = $("failures");
     if (!d.failures || !d.failures.length) {
       box.innerHTML = '<span class="empty">暂无失败任务</span>';
       return;
     }
+    /* 87 轮：默认只渲染待处理记录（处理过的不消失数据、只消失在列表外，历史开关可回看） */
+    const visible = d.failures.filter((f) => failShowHistory || f.status === "pending");
+    if (!visible.length) {
+      box.innerHTML = '<span class="empty">暂无待处理记录' + (failShowHistory ? "" : "（可点「显示历史」回看已处理的记录）") + '</span>';
+      return;
+    }
     box.innerHTML = "";
-    d.failures.slice(0, 20).forEach((f) => {
+    visible.slice(0, 20).forEach((f) => {
       const row = document.createElement("div");
       row.className = "fail-row";
       const tasks = Array.isArray(f.task) ? f.task.join(",") : f.task;
@@ -1146,7 +1197,7 @@ async function refreshFailures() {
             '<button class="btn sm ghost" data-a="handled">已处理</button>' +
             '<button class="btn sm ghost" data-a="ignored">忽略</button>' +
             '<button class="btn sm ghost" data-a="retried">重试</button>' :
-            '<span class="empty">' + esc(((f.history && f.history[f.history.length - 1]) || {}).action || "") + '</span>') +
+            '<span class="empty">' + esc(ACTION_LABEL[((f.history && f.history[f.history.length - 1]) || {}).action] || "已处理") + '</span>') +
         '</div>';
       row.querySelectorAll("[data-a]").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -1167,9 +1218,16 @@ async function refreshFailures() {
   }
 }
 
-/* 一键清理：把全部待处理失败记录批量标记为已处理（服务端保留审计历史） */
+/* 「显示历史」开关：切换待处理/全部记录的可见性（记住选择） */
+$("btnFailHistory").addEventListener("click", () => {
+  failShowHistory = !failShowHistory;
+  try { localStorage.setItem("autofw_fail_history", failShowHistory ? "1" : "0"); } catch (e) { /* 忽略 */ }
+  refreshFailures();
+});
+
+/* 一键清理：归档备份后清空【全部】记录（含已处理/已忽略历史，与清理信息按钮同语义） */
 $("btnClearFail").addEventListener("click", async () => {
-  if (!confirm("确认清空待手动处理列表？（全部标记为已处理，保留历史记录）")) return;
+  if (!confirm("确认清理全部记录？（含已处理/已忽略历史，服务端先归档到 failures_archive.json 再清空）")) return;
   const btn = $("btnClearFail");
   btn.disabled = true;
   try {

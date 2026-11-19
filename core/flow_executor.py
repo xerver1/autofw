@@ -29,6 +29,9 @@ if BASE not in sys.path:
 import cv2  # noqa: E402
 
 from core.device import ADB as _DEV_ADB, ADDR as _DEV_ADDR, EmulatorDevice  # noqa: E402
+# 93 轮：FlowExecutor/_to_bool 从 flow_engine import——本文件与 flow_engine 是单向依赖
+# （flow_engine 不反向 import 本文件），无循环 import；ActionSkipped 同样定义在 flow_engine，
+# 但执行动作时才用到（见 execute_action 的 adb_tap 分支），用函数内局部 import 规避潜在环。
 from core.flow_engine import FlowExecutor, _to_bool  # noqa: E402
 
 MATCH_THRESHOLD = 0.8
@@ -56,6 +59,14 @@ class FlowDeviceExecutor(FlowExecutor):
         self._adb = adb
         self._addr = addr
         self.last_error = ""
+        # 93 轮：最近一次图像识别命中的模板中心坐标 (cx, cy)——adb_tap 的 tap_src=last_match
+        # 动态点击数据源。命中时写入，未命中/尚未识别过时为 None（见 _match_image/_region_match）。
+        self.last_match_pos = None
+        # 94 轮：内部步数计数器（execute_action/evaluate_condition 各 +1，不依赖引擎 steps——
+        # 循环判定 _loop_test 直接调 evaluate_condition 的链路同样被计到）。last_match_step
+        # 记录命中时的步数，供 tap_max_age 新鲜度判断：当前步 - 命中步 > 上限 → 视为过期。
+        self._step_counter = 0
+        self.last_match_step = -1
 
     def _dev(self):
         if self.device is None:
@@ -94,9 +105,38 @@ class FlowDeviceExecutor(FlowExecutor):
         action = cfg.get("action") or ""
         name = node.get("name") or action
         self.last_error = ""
+        self._step_counter += 1  # 94 轮：新鲜度计数（见 __init__ 注释）
+        # 93 轮：ActionSkipped 局部 import（定义在 flow_engine，见文件头注释）——
+        # 放函数开头，分支抛出与末尾兜底 except 复用同一名字。
+        from core.flow_engine import ActionSkipped
         try:
             parts = action.split()
             if parts[0] == "adb_tap":
+                # 93 轮：tap_src=last_match 动态优先——优先点「最近一次识别命中」的位置
+                #（前置判定/循环判定 match_image / region_match 命中时都会留下坐标）；
+                # 没有可用坐标时抛 ActionSkipped（勿 return False——引擎对 False 是 RunAborted
+                # 中止整个流程；ActionSkipped 由引擎捕获后只跳过本节点，沿出边继续）。
+                if cfg.get("tap_src") == "last_match":
+                    pos = self.last_match_pos
+                    max_age = cfg.get("tap_max_age")
+                    if pos is None:
+                        raise ActionSkipped("动态坐标不可用（之前没有识别命中）——已跳过本点击节点")
+                    # 94 轮：新鲜度闸——命中距今超过 tap_max_age 步视为过期（界面早已切走，
+                    # 位置语义已失效），走跳过路径而非点过时坐标；未配置则不限制（93 轮原语义）。
+                    if isinstance(max_age, (int, float)) and not isinstance(max_age, bool) and max_age > 0 \
+                            and (self._step_counter - self.last_match_step) > max_age:
+                        raise ActionSkipped(
+                            "动态坐标已过期（命中于 %d 步前，超过上限 %d）——已跳过本点击节点"
+                            % (self._step_counter - self.last_match_step, int(max_age)))
+                    dx, dy = (cfg.get("tap_offset") or [0, 0]) if isinstance(cfg.get("tap_offset"), (list, tuple)) else (0, 0)
+                    px, py = int(pos[0]) + int(dx or 0), int(pos[1]) + int(dy or 0)
+                    # 动态坐标跳过 47 轮的 tap 生效自检（snap+diff 成本高且与静态标注场景动机不同），
+                    # 直接执行点击并记录事件日志由引擎侧拼接
+                    self._dev().tap(px, py)
+                    self.last_tap = {"x": px, "y": py, "verify": None, "src": "last_match"}
+                    self._tap_dynamic_msg = "动态坐标 (%d,%d)（来源：最近识别命中%s）" % (
+                        px, py, ("，偏移 %+d/%+d" % (int(dx or 0), int(dy or 0))) if (dx or dy) else "")
+                    return True
                 # 46 轮根治（双源坐标不一致）：编辑器标记 tap_x/y 优先于 action 串坐标——
                 # 标记即真源，用户标记后无需再点「应用为 adb_tap」；action 串坐标作回退
                 tx, ty = cfg.get("tap_x"), cfg.get("tap_y")
@@ -124,6 +164,14 @@ class FlowDeviceExecutor(FlowExecutor):
                 act = parts[1] if len(parts) > 1 else None
                 self._dev().start_app(ctx.get("pkg", ""), act)
                 return True
+            if parts[0] == "app_close":
+                # 92 轮：关闭当前流程 App（device.close_app：force-stop → 复查 app_state
+                # → 杀不死走 MuMuManager close 兜底，persistent 应用免疫 force-stop 的 E6 已处理）。
+                # 不带包名参数——关的就是本流程 pkg，语义"跑完日常后关掉省资源"。
+                ok = self._dev().close_app(ctx.get("pkg", ""))
+                if not ok:
+                    self.last_error = "app_close：关闭 %s 失败（force-stop 与 MuMuManager 兜底均未生效）" % ctx.get("pkg", "")
+                return ok
             if parts[0] == "wait":
                 ms = int(parts[1]) if len(parts) > 1 else 1000
                 time.sleep(max(0.05, ms / 1000.0))
@@ -160,6 +208,11 @@ class FlowDeviceExecutor(FlowExecutor):
                 return self._ocr_contains(cfg.get("text") or "")
             self.last_error = "未知动作原语: %s" % action
             return False
+        except ActionSkipped:
+            # 93 轮：动态坐标不可用的跳过信号——穿透兜底 except（否则会被当成普通动作失败
+            # 吞成 False，引擎对 False 是 RunAborted 中止整个流程，语义完全不对）。
+            self.last_error = ""
+            raise
         except Exception as e:  # noqa: BLE001
             self.last_error = "动作 %s 失败: %s" % (name, e)
             return False
@@ -170,6 +223,7 @@ class FlowDeviceExecutor(FlowExecutor):
         cfg = node.get("config") or {}
         kind = cfg.get("kind") or "expr"
         self.last_error = ""
+        self._step_counter += 1  # 94 轮：新鲜度计数（_loop_test 直接调这里也被计到）
         if kind == "match_image":
             return self._match_image(cfg, ctx)
         if kind == "region_match":
@@ -182,6 +236,26 @@ class FlowDeviceExecutor(FlowExecutor):
         except ValueError as e:
             self.last_error = str(e)
             raise
+
+    def check_maintenance(self, node, ctx):
+        """86 轮：维护画面检测。返回 (hit: bool, basis: str)。
+        复用判定链（match_image 模板 / region_match 圈选 / ocr_contains 文字），
+        阈值可用 config.match_threshold（默认 0.85——高于常规判定 0.8，降低误报：
+        误报的代价是整个 App 被跳过）。未配置任何依据 = 异常（运行可见，不静默放行）。"""
+        cfg = node.get("config") or {}
+        kind = cfg.get("kind") or "match_image"
+        self.last_error = ""
+        if kind == "match_image":
+            hit = self._match_image(cfg, ctx)
+            return hit, "模板 %s" % (cfg.get("image") or "?")
+        if kind == "region_match":
+            hit = self._region_match(cfg, ctx)
+            rm = cfg.get("region_match") or {}
+            return hit, "区域 (%d,%d %dx%d)" % (rm.get("x", 0), rm.get("y", 0), rm.get("w", 0), rm.get("h", 0))
+        if kind == "ocr_contains":
+            hit = self._ocr_contains(cfg.get("text") or "")
+            return hit, "文字包含「%s」" % (cfg.get("text") or "?")
+        raise ValueError("维护检测节点使用了未知判定方式: %s" % kind)
 
     def _match_image(self, cfg, ctx):
         """模板匹配：当前屏截图 vs adapters/templates/<pkg>/<image>。返回 bool。"""
@@ -200,10 +274,18 @@ class FlowDeviceExecutor(FlowExecutor):
             raise RuntimeError("模板无法读取: %s" % tpath)
         try:
             res = cv2.matchTemplate(screen, tmpl, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(res)
+            # 93 轮：捡起 minMaxLoc 的 loc 算模板中心——命中时写 last_match_pos 供
+            # tap_src=last_match 的动态点击使用；未命中置 None（动态点击将跳过）
+            _, max_val, _, loc = cv2.minMaxLoc(res)
         except cv2.error as e:
             raise RuntimeError("匹配失败（模板大于截图?）: %s" % e)
-        return float(max_val) >= MATCH_THRESHOLD
+        if float(max_val) >= MATCH_THRESHOLD:
+            # 93 轮：loc 是匹配左上角，模板中心 = 左上角 + (w/2, h/2)（int 舍入即可）
+            self.last_match_pos = (int(loc[0] + tmpl.shape[1] / 2), int(loc[1] + tmpl.shape[0] / 2))
+            self.last_match_step = self._step_counter  # 94 轮：记录命中步数（tap_max_age 新鲜度）
+            return True
+        self.last_match_pos = None  # 93 轮：未命中清坐标——动态点击宁可不点也不点错位置
+        return False
 
     def _region_match(self, cfg, ctx):
         """区域匹配：当前屏截图 → 裁剪 region_match 区域 → 在区域内匹配目标图像（target_crop_b64）。
@@ -259,10 +341,12 @@ class FlowDeviceExecutor(FlowExecutor):
             methods = ["default"]
 
         scores = {}
+        match_loc = None  # 93 轮：default 方法命中的匹配左上角（区域坐标系），算中心用
         try:
             if "default" in methods:
                 res = cv2.matchTemplate(region, tmpl, cv2.TM_CCOEFF_NORMED)
-                _, v, _, _ = cv2.minMaxLoc(res)
+                # 93 轮：捡起 minMaxLoc 的 loc（区域内坐标，后面加回区域原点得屏幕坐标）
+                _, v, _, match_loc = cv2.minMaxLoc(res)
                 scores["default"] = float(v)
             if "edge" in methods:
                 scores["edge"] = self._match_edge(region, tmpl)
@@ -274,6 +358,15 @@ class FlowDeviceExecutor(FlowExecutor):
 
         # OR 逻辑：任一方法达到阈值即命中
         matched = any((s is not None and s >= th) for s in scores.values())
+        # 93 轮：命中时写模板中心屏幕坐标——只有 default 方法拿得到 loc（edge/feature 的
+        # _match_edge/_match_feature 只返回分数不返回位置，此时保持 None 不写，
+        # 动态点击宁可不点也不点错位置）；区域坐标系 → 屏幕坐标要加回区域原点 (x, y)。
+        if matched and match_loc is not None:
+            self.last_match_pos = (int(x + match_loc[0] + tmpl.shape[1] / 2),
+                                   int(y + match_loc[1] + tmpl.shape[0] / 2))
+            self.last_match_step = self._step_counter  # 94 轮：记录命中步数（tap_max_age 新鲜度）
+        else:
+            self.last_match_pos = None  # 未命中或无 loc：清坐标
         # 记录各方法得分，便于调试（写入 last_error 之外，由引擎忽略即可）
         self.match_scores = scores
         return matched

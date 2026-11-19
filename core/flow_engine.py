@@ -56,7 +56,8 @@ MAX_STEPS = 10000
 _lock = threading.Lock()
 
 NODE_TYPES = ("start", "end", "action", "condition", "if_else", "else_if", "switch_case",
-              "loop_for", "loop_while", "loop_do_while", "print", "break")
+              "loop_for", "loop_while", "loop_do_while", "print", "break",
+              "maintenance_check")  # 86 轮：维护画面检测（命中→App 级中止，跳过该 App 剩余任务）
 LOOP_TYPES = ("loop_for", "loop_while", "loop_do_while")
 ACTION_KINDS = ("task", "adb_tap", "am_start", "wait", "swipe", "key", "ocr_check")
 CONDITION_KINDS = ("match_image", "region_match", "ocr_contains", "expr")
@@ -224,6 +225,11 @@ def _validate_graph(nodes, edges, subgraphs, issues, prefix, depth):
             issues.append({"node": n["id"], "level": "error",
                            "msg": "%s未知节点类型「%s」" % (prefix, t)})
             continue
+        if t == "maintenance_check":
+            # 86 轮：维护检测节点须配置匹配图像（未配置仅 warning 放行——运行时报错可见）
+            if not (cfg.get("image") or cfg.get("target_crop_b64")):
+                issues.append({"node": n["id"], "level": "warning",
+                               "msg": "%s维护检测未配置匹配图像（请圈选维护公告画面）" % (prefix + "「%s」" % n.get("name"))})
         loc = prefix + "「%s」" % n.get("name")
         # 配置缺失 / 类型错误
         if t == "break" or (t == "action" and cfg.get("op") == "break"):
@@ -414,6 +420,21 @@ class MockExecutor(FlowExecutor):
             raise
         self.trace.append(("cond", node["id"], r))
         return bool(r)
+
+
+class MaintenanceDetected(Exception):
+    """86 轮：维护检测节点命中维护画面——App 级中止信号。
+    与 RunAborted（任务级失败）不同：捕获后跳过该 App 剩余全部任务并继续下一个 App，
+    用于停服/维护场景快速止损。"""
+    pass
+
+
+class ActionSkipped(Exception):
+    """93 轮：动作节点请求跳过自身——只跳本节点，不中止流程。
+    与 MaintenanceDetected（App 级中止）不同：捕获后沿正常出边继续走后续节点。
+    当前唯一产生源：FlowDeviceExecutor 的 adb_tap 且 tap_src=last_match 时
+    没有可用的最近识别命中坐标（动态优先语义：宁可不点也不点错静态坐标）。"""
+    pass
 
 
 class RunAborted(Exception):
@@ -608,6 +629,9 @@ class FlowRunner:
                 start = starts[0]
             self._walk(start, graph, depth=0, nodes=nodes)
             return self._summary("ok")
+        except MaintenanceDetected as e:
+            # 86 轮：维护画面命中——summary 标记 maintenance，flow_pipeline 据此跳过 App 剩余任务
+            return self._summary("maintenance", "检测到维护画面：%s" % e)
         except RunAborted as e:
             return self._summary("aborted", str(e))
         except LoopBreak:
@@ -654,7 +678,22 @@ class FlowRunner:
 
             if t == "action":
                 rec["action"] = (node.get("config") or {}).get("action", "")
-                ok = self.executor.execute_action(node, {"pkg": self.flow.get("pkg")})
+                try:
+                    ok = self.executor.execute_action(node, {"pkg": self.flow.get("pkg")})
+                except ActionSkipped as e:
+                    # 93 轮：节点自请求跳过（当前唯一来源：adb_tap 动态坐标不可用）——
+                    # 与 maintenance 的差异：maintenance 中止整个 App，这里只跳本节点，
+                    # 沿正常出边继续走后续节点。台账 exit 记 'skipped' + 事件日志警告。
+                    msg = "动态坐标不可用，已跳过点击节点「%s」（%s）" % (node.get("name") or node.get("id"), e)
+                    rec["exit"] = _ts()
+                    rec["result"] = "skipped"
+                    self.events.append({"t": _ts(), "node": node.get("id"), "msg": "⚠ " + msg})
+                    log.warning("[flow] 节点「%s」被跳过：%s", node.get("name"), e)
+                    nxt = self._next_edge(edges, node["id"])
+                    if nxt is None:
+                        return
+                    node = nodes[nxt["to"]]
+                    continue
                 err = getattr(self.executor, "last_error", "")
                 if ok and err and "无变化" in err:
                     # 47 轮：tap 生效自检警告——不中断流程，写事件日志（前端运行日志可见）
@@ -665,6 +704,14 @@ class FlowRunner:
                 if not ok:
                     self._exit(rec, "fail", err or "动作执行失败")
                     raise RunAborted("动作失败：%s%s" % (node.get("name"), ("（" + err + "）") if err else ""))
+                # 93 轮：动态点击（tap_src=last_match）成功——事件日志写明坐标来源（简报硬要求），
+                # 消息由 executor 暂存在 _tap_dynamic_msg（老动作/静态坐标没有此属性，不影响）
+                dyn_msg = getattr(self.executor, "_tap_dynamic_msg", None)
+                if dyn_msg:
+                    self.events.append({"t": _ts(), "node": node.get("id"),
+                                        "msg": "已点击 " + dyn_msg})
+                    log.info("[flow] 节点「%s」已点击 %s", node.get("name"), dyn_msg)
+                    self.executor._tap_dynamic_msg = None  # 一次性消费，防串到下一个动作
                 self._exit(rec, "ok")
                 nxt = self._next_edge(edges, node["id"])
                 if nxt is None:
@@ -679,6 +726,23 @@ class FlowRunner:
                 prints_log.info("%s", text)
                 log.info("[print] %s", text)
                 self._exit(rec, "ok", text)
+                nxt = self._next_edge(edges, node["id"])
+                if nxt is None:
+                    return
+                node = nodes[nxt["to"]]
+                continue
+
+            if t == "maintenance_check":
+                # 86 轮：维护画面检测——命中（画面出现）即抛 App 级中止；
+                # 未命中（画面未出现）静默通过，继续走后续节点（与判定节点的区别：不分支）。
+                hit, basis = self.executor.check_maintenance(node, {"pkg": self.flow.get("pkg")})
+                self._exit(rec, "ok" if not hit else "maintenance",
+                           ("检测依据=%s" % basis) if hit else "未检测到维护画面")
+                if hit:
+                    self.events.append({"t": _ts(), "node": node.get("id"),
+                                        "msg": "⚠ 检测到维护画面（%s）——中止本 App 剩余任务" % basis})
+                    log.warning("[flow] 维护检测命中「%s」（%s）→ App 级中止", node.get("name"), basis)
+                    raise MaintenanceDetected(str(node.get("name") or node.get("id")))
                 nxt = self._next_edge(edges, node["id"])
                 if nxt is None:
                     return

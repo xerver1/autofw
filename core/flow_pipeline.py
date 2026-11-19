@@ -23,6 +23,7 @@ from .flow_engine import FlowRunner, validate_flow, save_run_log
 from .flow_executor import FlowDeviceExecutor
 from .device import EmulatorDevice
 from .failures import add_failure
+from .flow_engine import MaintenanceDetected  # 86 轮：维护画面 App 级中止
 
 log = logging.getLogger("autofw")
 
@@ -152,8 +153,13 @@ class FlowPipeline:
             if not enabled:
                 log.warning("[flow_pipeline] App %s 无可启用任务，跳过", pkg)
                 return
+            app_state = {"maintenance": False}  # 86 轮：维护命中后跳过剩余任务
             for t in enabled:
-                self._run_task(pkg, t)
+                if app_state["maintenance"]:
+                    log.warning("[flow_pipeline] ⚠ App %s 已判定维护/停服，跳过任务「%s」", pkg, t.get("name", t["id"]))
+                    add_failure(pkg, [t["id"]], "已跳过（App 检测到维护画面，疑似停服维护）", pipeline="flow")
+                    continue
+                self._run_task(pkg, t, app_state=app_state)
         except Exception as e:  # noqa: BLE001
             log.error("[flow_pipeline] App %s 执行异常：%s", pkg, e)
             add_failure(pkg, ["?"], "执行异常: %s" % e, pipeline="flow")
@@ -181,7 +187,7 @@ class FlowPipeline:
                 log.warning("[flow_pipeline] ⏸ 流水线已暂停 %d 秒（移除 state/pause.flag 或控制台点「继续」恢复）", waited)
         log.warning("[flow_pipeline] ▶ 暂停解除，继续执行")
 
-    def _run_task(self, pkg, task_meta):
+    def _run_task(self, pkg, task_meta, app_state=None):
         task_id = task_meta["id"]
         # 71 轮：每个子任务边界也检查暂停（App 内多任务时逐任务可停）
         self._wait_if_paused(pkg, label="任务「%s」开始前" % task_meta.get("name", task_id))
@@ -245,6 +251,20 @@ class FlowPipeline:
                         "ts": time.strftime("%Y-%m-%d %H:%M:%S")})
             return
         status = summary.get("status", "error")
+        # 86 轮：维护画面命中 → 标记 app_state，本 App 剩余任务全部跳过
+        if status == "maintenance":
+            log.warning("[flow_pipeline] ⚠ App %s 检测到维护画面（%s），跳过剩余任务",
+                        pkg, summary.get("note", ""))
+            add_failure(pkg, [task_id],
+                        "检测到维护画面（%s）——App 级跳过" % summary.get("note", ""),
+                        pipeline="flow")
+            if app_state is not None:
+                app_state["maintenance"] = True
+            write_live({"running": False, "phase": "task_done", "pkg": pkg,
+                        "task_id": task_id, "task_name": name, "status": "maintenance",
+                        "steps": summary.get("steps", 0),
+                        "ts": time.strftime("%Y-%m-%d %H:%M:%S")})
+            return
         if status != "ok":
             log.warning("[flow_pipeline] 任务 %s/%s 结束：%s（%s）",
                         pkg, task_id, status, summary.get("note", ""))
